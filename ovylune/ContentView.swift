@@ -39,6 +39,7 @@ struct ContentView: View {
 private struct CalendarView: View {
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
+    @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
 
     private var summary: CycleSummary {
         CycleInsights.summary(for: entries)
@@ -48,7 +49,11 @@ private struct CalendarView: View {
         NavigationStack {
             List {
                 Section {
-                    MonthPager(entries: entries, ovulationEntries: ovulationEntries)
+                    MonthPager(
+                        entries: entries,
+                        ovulationEntries: ovulationEntries,
+                        isOvulationTrackingEnabled: isOvulationTrackingEnabled
+                    )
                 }
 
                 Section {
@@ -71,6 +76,7 @@ private struct TrackView: View {
     let ovulationEntries: [OvulationEntry]
 
     @State private var trackingMode = TrackingMode.period
+    @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
 
     @State private var startDate = Date()
     @State private var endDate = Date()
@@ -82,7 +88,7 @@ private struct TrackView: View {
     var body: some View {
         NavigationStack {
             Group {
-                switch trackingMode {
+                switch isOvulationTrackingEnabled ? trackingMode : .period {
                 case .period:
                     periodContent
                 case .ovulation:
@@ -91,17 +97,24 @@ private struct TrackView: View {
             }
             .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Picker("Tracking type", selection: $trackingMode) {
-                            ForEach(TrackingMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
+                if isOvulationTrackingEnabled {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            Picker("Tracking type", selection: $trackingMode) {
+                                ForEach(TrackingMode.allCases) { mode in
+                                    Text(mode.rawValue).tag(mode)
+                                }
                             }
+                        } label: {
+                            Label(trackingMode.rawValue, systemImage: "chevron.down")
+                                .labelStyle(.titleAndIcon)
                         }
-                    } label: {
-                        Label(trackingMode.rawValue, systemImage: "chevron.down")
-                            .labelStyle(.titleAndIcon)
                     }
+                }
+            }
+            .onChange(of: isOvulationTrackingEnabled) { _, isEnabled in
+                if !isEnabled {
+                    trackingMode = .period
                 }
             }
         }
@@ -315,6 +328,7 @@ private struct OvulationTrackView: View {
 private struct MonthPager: View {
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
+    let isOvulationTrackingEnabled: Bool
 
     @State private var selectedOffset = 0
     @State private var furthestPredictedOffset = 0
@@ -325,9 +339,10 @@ private struct MonthPager: View {
 
     var body: some View {
         let loggedDays = periodDays
-        let loggedOvulationDays = ovulationDays
+        let loggedOvulationDays = isOvulationTrackingEnabled ? ovulationDays : []
         let predictedDays = predictedPeriodDays
-        let ovulationPrediction = predictedOvulation
+        let ovulationPrediction: (ovulationDays: Set<Date>, fertileDays: Set<Date>) =
+            isOvulationTrackingEnabled ? predictedOvulation : ([], [])
 
         TabView(selection: $selectedOffset) {
             ForEach(monthOffsets, id: \.self) { offset in
@@ -337,7 +352,8 @@ private struct MonthPager: View {
                     ovulationDays: loggedOvulationDays,
                     predictedPeriodDays: predictedDays,
                     predictedOvulationDays: ovulationPrediction.ovulationDays,
-                    predictedFertileDays: ovulationPrediction.fertileDays
+                    predictedFertileDays: ovulationPrediction.fertileDays,
+                    isOvulationTrackingEnabled: isOvulationTrackingEnabled
                 )
                 .padding(.vertical, 16)
                 .fixedSize(horizontal: false, vertical: true)
@@ -535,6 +551,7 @@ private struct MonthCalendar: View {
     let predictedPeriodDays: Set<Date>
     let predictedOvulationDays: Set<Date>
     let predictedFertileDays: Set<Date>
+    let isOvulationTrackingEnabled: Bool
 
     private let calendar = Calendar.current
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
@@ -568,7 +585,9 @@ private struct MonthCalendar: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 legendItem(color: .pink, label: "Period logged")
-                legendItem(color: .purple, label: "Ovulation logged")
+                if isOvulationTrackingEnabled {
+                    legendItem(color: .purple, label: "Ovulation logged")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -1168,14 +1187,21 @@ private struct EntryDetailView: View {
 }
 
 private struct SettingsView: View {
+    @Environment(\.modelContext) private var modelContext
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
+    @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
     @State private var newSymptom = ""
+    @State private var isShowingDisableWarning = false
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    Toggle("Enable Ovulation Tracking", isOn: ovulationTrackingBinding)
+                }
+
                 Section("Symptoms") {
                     HStack {
                         TextField("Add a symptom", text: $newSymptom)
@@ -1203,7 +1229,37 @@ private struct SettingsView: View {
                 }
             }
             .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
+            .alert("Disable Ovulation Tracking?", isPresented: $isShowingDisableWarning) {
+                Button("Cancel", role: .cancel) {}
+                Button("Disable and Delete History", role: .destructive) {
+                    disableOvulationTracking()
+                }
+            } message: {
+                Text("Your ovulation history will be permanently deleted. Do you want to continue?")
+            }
         }
+    }
+
+    private var ovulationTrackingBinding: Binding<Bool> {
+        Binding(
+            get: { isOvulationTrackingEnabled },
+            set: { newValue in
+                if newValue {
+                    isOvulationTrackingEnabled = true
+                } else if ovulationEntries.isEmpty {
+                    isOvulationTrackingEnabled = false
+                } else {
+                    isShowingDisableWarning = true
+                }
+            }
+        )
+    }
+
+    private func disableOvulationTracking() {
+        for entry in ovulationEntries {
+            modelContext.delete(entry)
+        }
+        isOvulationTrackingEnabled = false
     }
 
     private var symptoms: [String] {
@@ -1231,6 +1287,10 @@ private struct SettingsView: View {
         updatedSymptoms.remove(atOffsets: offsets)
         storedSymptoms = SymptomCatalog.encode(updatedSymptoms)
     }
+}
+
+private enum OvulationTracking {
+    static let storageKey = "isOvulationTrackingEnabled"
 }
 
 private enum SymptomCatalog {
