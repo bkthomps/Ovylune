@@ -109,6 +109,7 @@ private struct CalendarView: View {
                     Text("Predictions are estimates for personal tracking only.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: 0, trailing: 28))
                 }
             }
             .listSectionSpacing(16)
@@ -636,6 +637,7 @@ private struct MonthCalendar: View {
                     legendItem(color: .purple, label: "Ovulation logged")
                 }
             }
+            .padding(.leading, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
