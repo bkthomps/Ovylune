@@ -273,6 +273,21 @@ struct ovyluneTests {
         )
     }
 
+    @Test func multiDayOvulationUsesLastDayForOvulationInterval() {
+        let periods = [PeriodEntry(startDate: date(2026, 1, 1))]
+        let ovulations = [
+            OvulationEntry(startDate: date(2026, 1, 10), endDate: date(2026, 1, 17))
+        ]
+
+        #expect(
+            CycleInsights.preciseAverageOvulationInterval(
+                periodEntries: periods,
+                ovulationEntries: ovulations,
+                calendar: calendar
+            ) == 43.0 / 3.0
+        )
+    }
+
     @Test func latestLoggedOvulationIsUsedWhenCycleHasMoreThanOne() {
         let periods = [PeriodEntry(startDate: date(2026, 1, 29))]
         let ovulations = [
