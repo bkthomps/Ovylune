@@ -58,7 +58,6 @@ private struct CalendarView: View {
                 }
             }
             .listSectionSpacing(16)
-            .navigationTitle("Calendar")
             .ongoingPeriodEditor(entries: entries)
         }
     }
@@ -115,7 +114,6 @@ private struct TrackView: View {
                     HistoryContent(entries: entries, deleteEntries: deleteEntries)
                 }
             }
-            .navigationTitle("Track")
             .ongoingPeriodEditor(entries: entries)
         }
     }
@@ -735,7 +733,6 @@ private struct PrivacyView: View {
                     Text("Cycle predictions are estimates for informational and personal tracking only. Ovylune is not a medical device and should not be used for diagnosis, treatment, contraception, or other medical decisions.")
                 }
             }
-            .navigationTitle("Privacy")
             .ongoingPeriodEditor(entries: entries)
         }
     }
