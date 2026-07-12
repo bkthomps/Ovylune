@@ -377,6 +377,7 @@ private struct IntimacyTrackView: View {
 
 private struct OvulationTrackView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage(OvulationMultipleDaysWarning.storageKey) private var suppressMultipleDaysWarning = false
     let entries: [OvulationEntry]
     let periodEntries: [PeriodEntry]
 
@@ -384,6 +385,7 @@ private struct OvulationTrackView: View {
     @State private var endDate = Date()
     @State private var multipleDays = false
     @State private var notes = ""
+    @State private var isShowingMultipleDaysWarning = false
 
     var body: some View {
         List {
@@ -393,7 +395,7 @@ private struct OvulationTrackView: View {
                         endDate = newValue
                     }
 
-                Toggle("Multiple Days", isOn: $multipleDays.animation())
+                Toggle("Multiple Days", isOn: multipleDaysBinding.animation())
 
                 if multipleDays {
                     DatePicker(
@@ -432,6 +434,33 @@ private struct OvulationTrackView: View {
             }
         }
         .listSectionSpacing(16)
+        .alert("Log Multiple Ovulation Days?", isPresented: $isShowingMultipleDaysWarning) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue") {
+                multipleDays = true
+            }
+            Button("Don't Show Again") {
+                suppressMultipleDaysWarning = true
+                multipleDays = true
+            }
+        } message: {
+            Text("The end date will be used as the ovulation date for cycle calculations, which is the standard method. All days in this entry will still be displayed on the calendar.")
+        }
+    }
+
+    private var multipleDaysBinding: Binding<Bool> {
+        Binding(
+            get: { multipleDays },
+            set: { newValue in
+                if !newValue {
+                    multipleDays = false
+                } else if suppressMultipleDaysWarning {
+                    multipleDays = true
+                } else {
+                    isShowingMultipleDaysWarning = true
+                }
+            }
+        )
     }
 
     private var selectedEndDate: Date? {
@@ -1413,6 +1442,7 @@ private struct OvulationEntryRow: View {
 
 private struct OvulationEntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(OvulationMultipleDaysWarning.storageKey) private var suppressMultipleDaysWarning = false
     @Bindable var entry: OvulationEntry
     let entries: [OvulationEntry]
     let periodEntries: [PeriodEntry]
@@ -1420,6 +1450,7 @@ private struct OvulationEntryDetailView: View {
     @State private var endDate: Date
     @State private var multipleDays: Bool
     @State private var notes: String
+    @State private var isShowingMultipleDaysWarning = false
 
     init(entry: OvulationEntry, entries: [OvulationEntry], periodEntries: [PeriodEntry]) {
         self.entry = entry
@@ -1439,7 +1470,7 @@ private struct OvulationEntryDetailView: View {
                         endDate = newValue
                     }
 
-                Toggle("Multiple Days", isOn: $multipleDays.animation())
+                Toggle("Multiple Days", isOn: multipleDaysBinding.animation())
 
                 if multipleDays {
                     DatePicker(
@@ -1481,6 +1512,33 @@ private struct OvulationEntryDetailView: View {
                 .disabled(hasOverlapWarning)
             }
         }
+        .alert("Log Multiple Ovulation Days?", isPresented: $isShowingMultipleDaysWarning) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue") {
+                multipleDays = true
+            }
+            Button("Don't Show Again") {
+                suppressMultipleDaysWarning = true
+                multipleDays = true
+            }
+        } message: {
+            Text("The end date will be used as the ovulation date for cycle calculations, which is the standard method. All days in this entry will still be displayed on the calendar.")
+        }
+    }
+
+    private var multipleDaysBinding: Binding<Bool> {
+        Binding(
+            get: { multipleDays },
+            set: { newValue in
+                if !newValue {
+                    multipleDays = false
+                } else if suppressMultipleDaysWarning {
+                    multipleDays = true
+                } else {
+                    isShowingMultipleDaysWarning = true
+                }
+            }
+        )
     }
 
     private var selectedEndDate: Date? {
@@ -1690,6 +1748,7 @@ private struct SettingsView: View {
     let intimacyEntries: [IntimacyEntry]
     @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
     @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
+    @AppStorage(OvulationMultipleDaysWarning.storageKey) private var suppressMultipleDaysWarning = false
     @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
     @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
     @State private var newSymptom = ""
@@ -1791,6 +1850,7 @@ private struct SettingsView: View {
         for entry in ovulationEntries {
             modelContext.delete(entry)
         }
+        suppressMultipleDaysWarning = false
         isOvulationTrackingEnabled = false
     }
 
@@ -1830,6 +1890,10 @@ private struct SettingsView: View {
 
 private enum OvulationTracking {
     static let storageKey = "isOvulationTrackingEnabled"
+}
+
+private enum OvulationMultipleDaysWarning {
+    static let storageKey = "suppressOvulationMultipleDaysWarning"
 }
 
 private enum IntimacyTracking {
