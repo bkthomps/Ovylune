@@ -42,7 +42,11 @@ struct ContentView: View {
                     Label("Track", systemImage: "plus.circle")
                 }
 
-            SettingsView(entries: entries, ovulationEntries: ovulationEntries)
+            SettingsView(
+                entries: entries,
+                ovulationEntries: ovulationEntries,
+                intimacyEntries: intimacyEntries
+            )
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
@@ -168,16 +172,18 @@ private struct TrackView: View {
             }
             .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Picker("Tracking type", selection: $trackingMode) {
-                            ForEach(availableTrackingModes) { mode in
-                                Text(mode.rawValue).tag(mode)
+                if availableTrackingModes.count > 1 {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            Picker("Tracking type", selection: $trackingMode) {
+                                ForEach(availableTrackingModes) { mode in
+                                    Text(mode.rawValue).tag(mode)
+                                }
                             }
+                        } label: {
+                            Label(trackingMode.rawValue, systemImage: "chevron.down")
+                                .labelStyle(.titleAndIcon)
                         }
-                    } label: {
-                        Label(trackingMode.rawValue, systemImage: "chevron.down")
-                            .labelStyle(.titleAndIcon)
                     }
                 }
             }
@@ -1651,12 +1657,14 @@ private struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
+    let intimacyEntries: [IntimacyEntry]
     @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
     @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
     @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
     @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
     @State private var newSymptom = ""
     @State private var isShowingDisableWarning = false
+    @State private var isShowingIntimacyDisableWarning = false
 
     var body: some View {
         NavigationStack {
@@ -1669,7 +1677,7 @@ private struct SettingsView: View {
                     }
 
                     Toggle("Enable Ovulation Tracking", isOn: ovulationTrackingBinding)
-                    Toggle("Enable Intimacy Tracking", isOn: $isIntimacyTrackingEnabled)
+                    Toggle("Enable Intimacy Tracking", isOn: intimacyTrackingBinding)
                 }
 
                 Section("Symptoms") {
@@ -1708,6 +1716,14 @@ private struct SettingsView: View {
             } message: {
                 Text("Your ovulation history will be permanently deleted. Do you want to continue?")
             }
+            .alert("Disable Intimacy Tracking?", isPresented: $isShowingIntimacyDisableWarning) {
+                Button("Cancel", role: .cancel) {}
+                Button("Disable and Delete History", role: .destructive) {
+                    disableIntimacyTracking()
+                }
+            } message: {
+                Text("Your intimacy history will be permanently deleted. Do you want to continue?")
+            }
         }
     }
 
@@ -1726,11 +1742,33 @@ private struct SettingsView: View {
         )
     }
 
+    private var intimacyTrackingBinding: Binding<Bool> {
+        Binding(
+            get: { isIntimacyTrackingEnabled },
+            set: { newValue in
+                if newValue {
+                    isIntimacyTrackingEnabled = true
+                } else if intimacyEntries.isEmpty {
+                    isIntimacyTrackingEnabled = false
+                } else {
+                    isShowingIntimacyDisableWarning = true
+                }
+            }
+        )
+    }
+
     private func disableOvulationTracking() {
         for entry in ovulationEntries {
             modelContext.delete(entry)
         }
         isOvulationTrackingEnabled = false
+    }
+
+    private func disableIntimacyTracking() {
+        for entry in intimacyEntries {
+            modelContext.delete(entry)
+        }
+        isIntimacyTrackingEnabled = false
     }
 
     private var symptoms: [String] {
