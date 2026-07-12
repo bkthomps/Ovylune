@@ -525,7 +525,8 @@ private struct MonthPager: View {
         let cycleLength = max(summary.averageCycleLength ?? CycleInsights.fallbackCycleLength, 1)
         var days: Set<Date> = []
 
-        if var predictedStart = summary.nextPeriodStart {
+        if window.end > predictionWindowStart,
+           var predictedStart = summary.nextPeriodStart {
             let earliestOverlappingStart = calendar.date(
                 byAdding: .day,
                 value: -(periodLength - 1),
@@ -534,7 +535,7 @@ private struct MonthPager: View {
             predictedStart = firstOccurrence(
                 startingOn: predictedStart,
                 interval: cycleLength,
-                onOrAfter: earliestOverlappingStart
+                onOrAfter: max(earliestOverlappingStart, predictionWindowStart)
             )
 
             while predictedStart < window.end {
@@ -615,6 +616,8 @@ private struct MonthPager: View {
             calendar: calendar
         ) else { return (ovulationDays, fertileDays) }
 
+        guard window.end > predictionWindowStart else { return (ovulationDays, fertileDays) }
+
         let earliestRelevantOvulation = calendar.date(
             byAdding: .day,
             value: -CycleInsights.fertileDaysAfterOvulation,
@@ -628,7 +631,7 @@ private struct MonthPager: View {
         ovulationDate = firstOccurrence(
             startingOn: ovulationDate,
             interval: predictionInterval,
-            onOrAfter: earliestRelevantOvulation
+            onOrAfter: max(earliestRelevantOvulation, predictionWindowStart)
         )
 
         while ovulationDate < latestRelevantOvulation {
@@ -661,6 +664,11 @@ private struct MonthPager: View {
         let start = calendar.dateInterval(of: .month, for: targetMonth)?.start ?? targetMonth
         let end = calendar.date(byAdding: .month, value: 1, to: start) ?? start
         return DateInterval(start: start, end: end)
+    }
+
+    private var predictionWindowStart: Date {
+        let currentMonth = month(for: 0)
+        return calendar.dateInterval(of: .month, for: currentMonth)?.start ?? currentMonth
     }
 
     private func firstOccurrence(
