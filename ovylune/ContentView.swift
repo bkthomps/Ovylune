@@ -48,7 +48,7 @@ private struct CalendarView: View {
         NavigationStack {
             List {
                 Section {
-                    MonthPager(entries: entries)
+                    MonthPager(entries: entries, ovulationEntries: ovulationEntries)
                 }
 
                 Section {
@@ -307,6 +307,7 @@ private struct OvulationTrackView: View {
 
 private struct MonthPager: View {
     let entries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
 
     @State private var selectedOffset = 0
     @State private var furthestPredictedOffset = 0
@@ -317,6 +318,7 @@ private struct MonthPager: View {
 
     var body: some View {
         let loggedDays = periodDays
+        let loggedOvulationDays = ovulationDays
         let predictedDays = predictedPeriodDays
 
         TabView(selection: $selectedOffset) {
@@ -324,6 +326,7 @@ private struct MonthPager: View {
                 MonthCalendar(
                     month: month(for: offset),
                     periodDays: loggedDays,
+                    ovulationDays: loggedOvulationDays,
                     predictedPeriodDays: predictedDays
                 )
                 .padding(.vertical, 16)
@@ -394,6 +397,18 @@ private struct MonthPager: View {
         return days
     }
 
+    private var ovulationDays: Set<Date> {
+        Set(ovulationEntries.flatMap { entry in
+            let start = calendar.startOfDay(for: entry.startDate)
+            let end = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
+            let dayCount = max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
+
+            return (0...dayCount).compactMap {
+                calendar.date(byAdding: .day, value: $0, to: start)
+            }
+        })
+    }
+
     private var predictionWindow: DateInterval {
         let currentMonth = month(for: 0)
         let start = calendar.dateInterval(of: .month, for: currentMonth)?.start ?? currentMonth
@@ -432,6 +447,7 @@ private struct MonthPager: View {
 private struct MonthCalendar: View {
     let month: Date
     let periodDays: Set<Date>
+    let ovulationDays: Set<Date>
     let predictedPeriodDays: Set<Date>
 
     private let calendar = Calendar.current
@@ -456,20 +472,28 @@ private struct MonthCalendar: View {
                     DayCell(
                         day: day,
                         hasPeriod: date.map(periodDays.contains) ?? false,
+                        hasOvulation: date.map(ovulationDays.contains) ?? false,
                         isPredictedPeriod: date.map(predictedPeriodDays.contains) ?? false
                     )
                 }
             }
 
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(.pink)
-                    .frame(width: 8, height: 8)
-                Text("Period logged")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
+            VStack(alignment: .leading, spacing: 6) {
+                legendItem(color: .pink, label: "Period logged")
+                legendItem(color: .purple, label: "Ovulation logged")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func legendItem(color: Color, label: String) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -514,6 +538,7 @@ private struct CalendarDay {
 private struct DayCell: View {
     let day: CalendarDay
     let hasPeriod: Bool
+    let hasOvulation: Bool
     let isPredictedPeriod: Bool
 
     private let calendar = Calendar.current
@@ -537,10 +562,19 @@ private struct DayCell: View {
                 .allowsTightening(true)
                 .frame(maxWidth: .infinity)
 
-            if hasPeriod {
-                Circle()
-                    .fill(.pink)
-                    .frame(width: 5, height: 5)
+            if hasPeriod || hasOvulation {
+                HStack(spacing: 2) {
+                    if hasPeriod {
+                        Circle()
+                            .fill(.pink)
+                            .frame(width: 5, height: 5)
+                    }
+                    if hasOvulation {
+                        Circle()
+                            .fill(.purple)
+                            .frame(width: 5, height: 5)
+                    }
+                }
                     .frame(maxHeight: .infinity, alignment: .bottom)
                     .padding(.bottom, 5)
             }
@@ -559,7 +593,9 @@ private struct DayCell: View {
     private var accessibilityLabel: String {
         guard let date = day.date else { return "Empty day" }
         let formatted = date.formatted(.dateTime.month(.wide).day().year())
+        if hasPeriod && hasOvulation { return "\(formatted), period and ovulation logged" }
         if hasPeriod { return "\(formatted), period logged" }
+        if hasOvulation { return "\(formatted), ovulation logged" }
         if isPredictedPeriod { return "\(formatted), period predicted" }
         return formatted
     }
