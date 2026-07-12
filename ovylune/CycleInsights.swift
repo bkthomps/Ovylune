@@ -44,6 +44,8 @@ enum CycleInsights {
     static let fertileDaysAfterOvulation = 1
     static let cycleLengthHalfLifeDays = 365.0
     static let periodLengthHalfLifeDays = 730.0
+    static let ovulationIntervalHalfLifeDays = 180.0
+    static let lutealPhaseHalfLifeDays = 730.0
 
     static func summary(for entries: [PeriodEntry], calendar: Calendar = .current) -> CycleSummary {
         let sorted = entries.sorted { $0.startDate < $1.startDate }
@@ -131,11 +133,6 @@ enum CycleInsights {
     }
 
     private static func cycleDataPoints(from entries: [PeriodEntry], calendar: Calendar) -> [Int] {
-        if entries.count == 1 {
-            guard let periodLength = periodDataPoints(from: entries, calendar: calendar).first else { return [] }
-            return [periodLength + fallbackTimeBetweenPeriods]
-        }
-
         let starts = entries.map { calendar.startOfDay(for: $0.startDate) }.sorted()
         return zip(starts, starts.dropFirst()).compactMap { previous, current in
             calendar.dateComponents([.day], from: previous, to: current).day
@@ -152,21 +149,24 @@ enum CycleInsights {
         }
     }
 
-    static func averageCycleLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Int? {
-        preciseAverageCycleLength(from: entries, calendar: calendar).map { Int($0.rounded()) }
+    static func averageCycleLength(
+        from entries: [PeriodEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Int? {
+        preciseAverageCycleLength(from: entries, before: cutoffDate, calendar: calendar).map { Int($0.rounded()) }
     }
 
-    static func preciseAverageCycleLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Double? {
+    static func preciseAverageCycleLength(
+        from entries: [PeriodEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Double? {
+        let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
         let sortedStarts = entries
             .map { calendar.startOfDay(for: $0.startDate) }
+            .filter { start in cutoff.map { start < $0 } ?? true }
             .sorted()
-
-        if sortedStarts.count == 1 {
-            guard let periodLength = preciseAveragePeriodLength(from: entries, calendar: calendar) else {
-                return nil
-            }
-            return periodLength + Double(fallbackTimeBetweenPeriods)
-        }
 
         guard sortedStarts.count >= 2 else { return nil }
 
@@ -178,78 +178,141 @@ enum CycleInsights {
         }
 
         guard !gaps.isEmpty else { return nil }
-        return recencyWeightedAverage(
+        return personalizedWeightedMedian(
             of: gaps,
             halfLifeDays: cycleLengthHalfLifeDays,
+            populationPrior: Double(fallbackCycleLength),
             calendar: calendar
         )
     }
 
-    static func averagePeriodLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Int? {
-        preciseAveragePeriodLength(from: entries, calendar: calendar).map { Int($0.rounded()) }
+    static func averagePeriodLength(
+        from entries: [PeriodEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Int? {
+        preciseAveragePeriodLength(from: entries, before: cutoffDate, calendar: calendar).map { Int($0.rounded()) }
     }
 
-    static func preciseAveragePeriodLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Double? {
+    static func preciseAveragePeriodLength(
+        from entries: [PeriodEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Double? {
+        let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
         let lengths = entries.compactMap { entry -> (value: Int, date: Date)? in
             guard let endDate = entry.endDate else { return nil }
             let start = calendar.startOfDay(for: entry.startDate)
             let end = calendar.startOfDay(for: endDate)
-            guard end >= start else { return nil }
+            guard end >= start, cutoff.map({ end < $0 }) ?? true else { return nil }
             return ((calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1, start)
         }
 
         guard !lengths.isEmpty else { return nil }
-        return recencyWeightedAverage(
+        return personalizedWeightedMedian(
             of: lengths,
             halfLifeDays: periodLengthHalfLifeDays,
+            populationPrior: Double(fallbackPeriodLength),
             calendar: calendar
         )
     }
 
-    private static func recencyWeightedAverage(
+    /// Uses calendar-time decay and a weighted median so isolated bad entries do
+    /// not pull predictions far away from the user's usual pattern. Personal
+    /// history gradually replaces the population prior over the first six
+    /// reliable observations.
+    private static func personalizedWeightedMedian(
         of observations: [(value: Int, date: Date)],
         halfLifeDays: Double,
+        populationPrior: Double,
         calendar: Calendar
     ) -> Double? {
         guard let newestDate = observations.map(\.date).max(), halfLifeDays > 0 else { return nil }
 
-        let weighted = observations.reduce(into: (sum: 0.0, weight: 0.0)) { result, observation in
+        let weighted = observations.map { observation -> (value: Int, weight: Double) in
             let ageInDays = max(
                 calendar.dateComponents([.day], from: observation.date, to: newestDate).day ?? 0,
                 0
             )
-            let weight = pow(0.5, Double(ageInDays) / halfLifeDays)
-            result.sum += Double(observation.value) * weight
-            result.weight += weight
+            return (observation.value, pow(2, -Double(ageInDays) / halfLifeDays))
         }
-
-        guard weighted.weight > 0 else { return nil }
-        return weighted.sum / weighted.weight
+        let sorted = weighted.sorted { $0.value < $1.value }
+        let totalWeight = sorted.reduce(0) { $0 + $1.weight }
+        guard totalWeight > 0 else { return nil }
+        var cumulativeWeight = 0.0
+        let personalEstimate = sorted.first { observation in
+            cumulativeWeight += observation.weight
+            return cumulativeWeight >= totalWeight / 2
+        }.map { Double($0.value) } ?? Double(sorted.last!.value)
+        let personalWeight = min(Double(observations.count) / 6.0, 1.0)
+        return personalEstimate * personalWeight + populationPrior * (1 - personalWeight)
     }
 
     static func averageOvulationInterval(
         from entries: [OvulationEntry],
+        before cutoffDate: Date? = nil,
         calendar: Calendar = .current
     ) -> Int? {
-        preciseAverageOvulationInterval(from: entries, calendar: calendar).map { Int($0.rounded()) }
+        preciseAverageOvulationInterval(from: entries, before: cutoffDate, calendar: calendar).map { Int($0.rounded()) }
     }
 
     static func preciseAverageOvulationInterval(
         from entries: [OvulationEntry],
+        before cutoffDate: Date? = nil,
         calendar: Calendar = .current
     ) -> Double? {
+        let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
         let sortedStarts = entries
             .map { calendar.startOfDay(for: $0.startDate) }
+            .filter { start in cutoff.map { start < $0 } ?? true }
             .sorted()
 
         guard sortedStarts.count >= 2 else { return nil }
 
-        let gaps = zip(sortedStarts, sortedStarts.dropFirst()).compactMap { previous, current in
-            calendar.dateComponents([.day], from: previous, to: current).day
+        let gaps = zip(sortedStarts, sortedStarts.dropFirst()).compactMap { previous, current -> (value: Int, date: Date)? in
+            guard let days = calendar.dateComponents([.day], from: previous, to: current).day else { return nil }
+            return (days, current)
         }
 
         guard !gaps.isEmpty else { return nil }
-        return Double(gaps.reduce(0, +)) / Double(gaps.count)
+        return personalizedWeightedMedian(
+            of: gaps,
+            halfLifeDays: ovulationIntervalHalfLifeDays,
+            populationPrior: Double(fallbackCycleLength),
+            calendar: calendar
+        )
+    }
+
+    /// Days from a period start to the detected ovulation event. This is the
+    /// secondary calendar signal when no reliable luteal-phase observation is
+    /// available.
+    static func preciseAverageOvulationInterval(
+        periodEntries: [PeriodEntry],
+        ovulationEntries: [OvulationEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Double? {
+        let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
+        let periodStarts = periodEntries
+            .map { calendar.startOfDay(for: $0.startDate) }
+            .filter { start in cutoff.map { start < $0 } ?? true }
+            .sorted()
+        let observations = preferredOvulationEntries(from: ovulationEntries, calendar: calendar)
+            .compactMap { entry -> (value: Int, date: Date)? in
+                let ovulationDate = calendar.startOfDay(for: entry.startDate)
+                guard cutoff.map({ ovulationDate < $0 }) ?? true,
+                      let periodStart = periodStarts.last(where: { $0 <= ovulationDate }),
+                      let interval = calendar.dateComponents([.day], from: periodStart, to: ovulationDate).day,
+                      interval > 0 else { return nil }
+                return (interval, ovulationDate)
+            }
+        guard !observations.isEmpty else { return nil }
+        return personalizedWeightedMedian(
+            of: observations,
+            halfLifeDays: ovulationIntervalHalfLifeDays,
+            populationPrior: Double(fallbackCycleLength - fallbackLutealPhaseLength),
+            calendar: calendar
+        )
     }
 
     static func nextOvulationDate(
@@ -257,15 +320,6 @@ enum CycleInsights {
         nextPeriodStart: Date?,
         calendar: Calendar = .current
     ) -> Date? {
-        if let interval = preciseAverageOvulationInterval(from: ovulationEntries, calendar: calendar),
-           let latest = ovulationEntries.map(\.startDate).max() {
-            return addingRoundedDays(
-                interval,
-                to: calendar.startOfDay(for: latest),
-                calendar: calendar
-            )
-        }
-
         guard let nextPeriodStart else { return nil }
         return calendar.date(
             byAdding: .day,
@@ -357,18 +411,24 @@ enum CycleInsights {
             .filter { entry in
                 cutoff.map { calendar.startOfDay(for: entry.startDate) < $0 } ?? true
             }
-        let lengths = eligibleOvulations.compactMap { entry -> Int? in
+        let lengths = eligibleOvulations.compactMap { entry -> (value: Int, date: Date)? in
             let ovulationEnd = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
             guard let precedingPeriod = periodStarts.last(where: { $0 <= ovulationEnd }),
                   let followingPeriod = periodStarts.first(where: { $0 > ovulationEnd }),
                   precedingPeriod < ovulationEnd,
                   let days = calendar.dateComponents([.day], from: ovulationEnd, to: followingPeriod).day,
                   days > 0 else { return nil }
-            return days
+            // The following period is when this observation becomes knowable.
+            return (days, followingPeriod)
         }
 
         guard !lengths.isEmpty else { return nil }
-        return Double(lengths.reduce(0, +)) / Double(lengths.count)
+        return personalizedWeightedMedian(
+            of: lengths,
+            halfLifeDays: lutealPhaseHalfLifeDays,
+            populationPrior: Double(fallbackLutealPhaseLength),
+            calendar: calendar
+        )
     }
 
     static func averageOvulationLength(
@@ -385,17 +445,16 @@ enum CycleInsights {
         before cutoffDate: Date? = nil,
         calendar: Calendar = .current
     ) -> Double? {
+        // Ovulation is modeled as a one-day event. Multi-day logged ranges may
+        // describe detection/LH windows, but are not a biological duration to
+        // learn and project into later cycles.
         let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
-        let lengths = preferredOvulationEntries(from: entries, calendar: calendar).compactMap { entry -> Int? in
-            let start = calendar.startOfDay(for: entry.startDate)
-            guard cutoff.map({ start < $0 }) ?? true else { return nil }
-            let end = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
-            guard end >= start else { return nil }
-            return (calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1
-        }
-
-        guard !lengths.isEmpty else { return nil }
-        return Double(lengths.reduce(0, +)) / Double(lengths.count)
+        guard preferredOvulationEntries(from: entries, calendar: calendar).contains(where: { entry in
+            cutoff.map { cutoffDay in
+                calendar.startOfDay(for: entry.startDate) < cutoffDay
+            } ?? true
+        }) else { return nil }
+        return 1
     }
 
     static func estimatedPeriodEnd(

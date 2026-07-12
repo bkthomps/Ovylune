@@ -745,32 +745,37 @@ private struct MonthPager: View {
         }
 
         for (cycleStart, cycleEnd) in zip(cycleStarts, cycleStarts.dropFirst()) {
-            let lutealLength = CycleInsights.preciseAverageLutealPhaseLength(
+            let learnedLutealLength = CycleInsights.preciseAverageLutealPhaseLength(
                 periodEntries: entries,
                 ovulationEntries: ovulationEntries,
                 before: cycleStart,
                 calendar: calendar
-            ) ?? Double(CycleInsights.fallbackLutealPhaseLength)
-            let predictedOvulationLength = CycleInsights.preciseAverageOvulationLength(
-                from: ovulationEntries,
+            )
+            let learnedOvulationInterval = CycleInsights.preciseAverageOvulationInterval(
+                periodEntries: entries,
+                ovulationEntries: ovulationEntries,
                 before: cycleStart,
                 calendar: calendar
-            ) ?? 1.0
+            )
             let logged = preferredOvulations
                 .filter {
                     let date = calendar.startOfDay(for: $0.startDate)
                     return date >= cycleStart && date < cycleEnd
                 }
                 .max { $0.startDate < $1.startDate }
-            let predictedEnd = calendar.date(byAdding: .day, value: Int((-lutealLength).rounded()), to: cycleEnd)
+            let predictedEvent = learnedLutealLength.flatMap {
+                calendar.date(byAdding: .day, value: Int((-$0).rounded()), to: cycleEnd)
+            } ?? learnedOvulationInterval.flatMap {
+                calendar.date(byAdding: .day, value: Int($0.rounded()), to: cycleStart)
+            } ?? calendar.date(
+                byAdding: .day,
+                value: -CycleInsights.fallbackLutealPhaseLength,
+                to: cycleEnd
+            )
             guard let ovulationEnd = logged.map({ calendar.startOfDay(for: $0.endDate ?? $0.startDate) })
-                    ?? predictedEnd else { continue }
+                    ?? predictedEvent else { continue }
             let ovulationStart = logged.map { calendar.startOfDay(for: $0.startDate) }
-                ?? calendar.date(
-                    byAdding: .day,
-                    value: Int((1 - predictedOvulationLength).rounded()),
-                    to: ovulationEnd
-                )!
+                ?? ovulationEnd
 
             ovulationDays.formUnion(days(from: ovulationStart, through: ovulationEnd, within: window))
             for offset in -CycleInsights.fertileDaysBeforeOvulation ..< 0 {
