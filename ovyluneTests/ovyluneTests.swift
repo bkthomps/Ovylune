@@ -94,6 +94,17 @@ struct ovyluneTests {
         #expect(!PeriodEntry.overlapsExisting(startDate: entry.startDate, endDate: entry.endDate, in: [entry], excluding: entry, calendar: calendar))
     }
 
+    @Test func periodRangesOverlapOvulationDatesInclusively() {
+        let ovulations = [
+            OvulationEntry(startDate: date(2026, 1, 14)),
+            OvulationEntry(startDate: date(2026, 2, 5), endDate: date(2026, 2, 7))
+        ]
+
+        #expect(PeriodEntry.overlapsExisting(startDate: date(2026, 1, 10), endDate: date(2026, 1, 14), in: ovulations, calendar: calendar))
+        #expect(!PeriodEntry.overlapsExisting(startDate: date(2026, 1, 15), endDate: date(2026, 2, 4), in: ovulations, calendar: calendar))
+        #expect(PeriodEntry.overlapsExisting(startDate: date(2026, 2, 6), endDate: nil, in: ovulations, calendar: calendar))
+    }
+
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
         DateComponents(calendar: calendar, year: year, month: month, day: day).date!
     }

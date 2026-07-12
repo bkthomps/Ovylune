@@ -18,7 +18,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView {
-            CalendarView(entries: entries)
+            CalendarView(entries: entries, ovulationEntries: ovulationEntries)
                 .tabItem {
                     Label("Calendar", systemImage: "calendar")
                 }
@@ -28,7 +28,7 @@ struct ContentView: View {
                     Label("Track", systemImage: "plus.circle")
                 }
 
-            PrivacyView(entries: entries)
+            PrivacyView(entries: entries, ovulationEntries: ovulationEntries)
                 .tabItem {
                     Label("Privacy", systemImage: "lock.shield")
                 }
@@ -38,6 +38,7 @@ struct ContentView: View {
 
 private struct CalendarView: View {
     let entries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
 
     private var summary: CycleSummary {
         CycleInsights.summary(for: entries)
@@ -59,7 +60,7 @@ private struct CalendarView: View {
                 }
             }
             .listSectionSpacing(16)
-            .ongoingPeriodEditor(entries: entries)
+            .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
         }
     }
 }
@@ -84,10 +85,10 @@ private struct TrackView: View {
                 case .period:
                     periodContent
                 case .ovulation:
-                    OvulationTrackView(entries: ovulationEntries)
+                    OvulationTrackView(entries: ovulationEntries, periodEntries: entries)
                 }
             }
-            .ongoingPeriodEditor(entries: entries)
+            .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -124,10 +125,17 @@ private struct TrackView: View {
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(2...5)
 
-                if overlapsExistingPeriod {
-                    Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                if hasOverlapWarning {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if overlapsExistingPeriod {
+                            Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                        if overlapsExistingOvulation {
+                            Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.red)
                 } else {
                     Button {
                         addEntry()
@@ -139,7 +147,7 @@ private struct TrackView: View {
             }
 
             Section {
-                HistoryContent(entries: entries, deleteEntries: deleteEntries)
+                HistoryContent(entries: entries, ovulationEntries: ovulationEntries, deleteEntries: deleteEntries)
             }
         }
     }
@@ -152,8 +160,16 @@ private struct TrackView: View {
         PeriodEntry.overlapsExisting(startDate: startDate, endDate: selectedEndDate, in: entries)
     }
 
+    private var overlapsExistingOvulation: Bool {
+        PeriodEntry.overlapsExisting(startDate: startDate, endDate: selectedEndDate, in: ovulationEntries)
+    }
+
+    private var hasOverlapWarning: Bool {
+        overlapsExistingOvulation || overlapsExistingPeriod
+    }
+
     private var canSave: Bool {
-        (!hasEndDate || endDate >= startDate) && !overlapsExistingPeriod
+        (!hasEndDate || endDate >= startDate) && !hasOverlapWarning
     }
 
     private func addEntry() {
@@ -195,6 +211,7 @@ private enum TrackingMode: String, CaseIterable, Identifiable {
 private struct OvulationTrackView: View {
     @Environment(\.modelContext) private var modelContext
     let entries: [OvulationEntry]
+    let periodEntries: [PeriodEntry]
 
     @State private var startDate = Date()
     @State private var endDate = Date()
@@ -218,10 +235,17 @@ private struct OvulationTrackView: View {
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(2...5)
 
-                if overlapsExistingOvulation {
-                    Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                if hasOverlapWarning {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if overlapsExistingOvulation {
+                            Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                        if overlapsExistingPeriod {
+                            Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.red)
                 } else {
                     Button {
                         addEntry()
@@ -232,7 +256,7 @@ private struct OvulationTrackView: View {
             }
 
             Section {
-                OvulationHistoryContent(entries: entries, deleteEntries: deleteEntries)
+                OvulationHistoryContent(entries: entries, periodEntries: periodEntries, deleteEntries: deleteEntries)
             }
         }
     }
@@ -249,8 +273,20 @@ private struct OvulationTrackView: View {
         )
     }
 
+    private var overlapsExistingPeriod: Bool {
+        PeriodEntry.overlapsExisting(
+            startDate: startDate,
+            endDate: selectedEndDate ?? startDate,
+            in: periodEntries
+        )
+    }
+
+    private var hasOverlapWarning: Bool {
+        overlapsExistingPeriod || overlapsExistingOvulation
+    }
+
     private func addEntry() {
-        guard !overlapsExistingOvulation else { return }
+        guard !hasOverlapWarning else { return }
         modelContext.insert(OvulationEntry(
             startDate: startDate,
             endDate: selectedEndDate,
@@ -659,6 +695,7 @@ private struct SymptomPicker: View {
 
 private struct HistoryContent: View {
     let entries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
     let deleteEntries: (IndexSet) -> Void
 
     var body: some View {
@@ -671,7 +708,7 @@ private struct HistoryContent: View {
         } else {
             ForEach(entries) { entry in
                 NavigationLink {
-                    EntryDetailView(entry: entry, entries: entries)
+                    EntryDetailView(entry: entry, entries: entries, ovulationEntries: ovulationEntries)
                 } label: {
                     EntryRow(entry: entry)
                 }
@@ -683,6 +720,7 @@ private struct HistoryContent: View {
 
 private struct OvulationHistoryContent: View {
     let entries: [OvulationEntry]
+    let periodEntries: [PeriodEntry]
     let deleteEntries: (IndexSet) -> Void
 
     var body: some View {
@@ -695,7 +733,7 @@ private struct OvulationHistoryContent: View {
         } else {
             ForEach(entries) { entry in
                 NavigationLink {
-                    OvulationEntryDetailView(entry: entry, entries: entries)
+                    OvulationEntryDetailView(entry: entry, entries: entries, periodEntries: periodEntries)
                 } label: {
                     OvulationEntryRow(entry: entry)
                 }
@@ -735,14 +773,16 @@ private struct OvulationEntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var entry: OvulationEntry
     let entries: [OvulationEntry]
+    let periodEntries: [PeriodEntry]
     @State private var startDate: Date
     @State private var endDate: Date
     @State private var multipleDays: Bool
     @State private var notes: String
 
-    init(entry: OvulationEntry, entries: [OvulationEntry]) {
+    init(entry: OvulationEntry, entries: [OvulationEntry], periodEntries: [PeriodEntry]) {
         self.entry = entry
         self.entries = entries
+        self.periodEntries = periodEntries
         _startDate = State(initialValue: entry.startDate)
         _endDate = State(initialValue: entry.endDate ?? entry.startDate)
         _multipleDays = State(initialValue: entry.endDate != nil)
@@ -770,10 +810,17 @@ private struct OvulationEntryDetailView: View {
             }
 
 
-            if overlapsExistingOvulation {
+            if hasOverlapWarning {
                 Section {
-                    Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if overlapsExistingOvulation {
+                            Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                        if overlapsExistingPeriod {
+                            Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                    }
+                    .foregroundStyle(.red)
                 }
             }
         }
@@ -783,7 +830,7 @@ private struct OvulationEntryDetailView: View {
                 Button("Save") {
                     save()
                 }
-                .disabled(overlapsExistingOvulation)
+                .disabled(hasOverlapWarning)
             }
         }
     }
@@ -801,8 +848,20 @@ private struct OvulationEntryDetailView: View {
         )
     }
 
+    private var overlapsExistingPeriod: Bool {
+        PeriodEntry.overlapsExisting(
+            startDate: startDate,
+            endDate: selectedEndDate ?? startDate,
+            in: periodEntries
+        )
+    }
+
+    private var hasOverlapWarning: Bool {
+        overlapsExistingPeriod || overlapsExistingOvulation
+    }
+
     private func save() {
-        guard !overlapsExistingOvulation else { return }
+        guard !hasOverlapWarning else { return }
         entry.startDate = startDate
         entry.endDate = selectedEndDate
         entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -864,15 +923,17 @@ private struct EntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var entry: PeriodEntry
     let entries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
     @State private var startDate: Date
     @State private var endDate: Date
     @State private var selectedSymptoms: Set<String>
     @State private var hasEndDate: Bool
     @State private var notes: String
 
-    init(entry: PeriodEntry, entries: [PeriodEntry]) {
+    init(entry: PeriodEntry, entries: [PeriodEntry], ovulationEntries: [OvulationEntry]) {
         self.entry = entry
         self.entries = entries
+        self.ovulationEntries = ovulationEntries
         _startDate = State(initialValue: entry.startDate)
         _endDate = State(initialValue: entry.endDate ?? entry.startDate)
         _selectedSymptoms = State(initialValue: Set(entry.symptoms))
@@ -910,10 +971,17 @@ private struct EntryDetailView: View {
             }
 
 
-            if overlapsExistingPeriod {
+            if hasOverlapWarning {
                 Section {
-                    Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if overlapsExistingPeriod {
+                            Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                        if overlapsExistingOvulation {
+                            Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
+                        }
+                    }
+                    .foregroundStyle(.red)
                 }
             }
         }
@@ -923,7 +991,7 @@ private struct EntryDetailView: View {
                 Button("Save") {
                     save()
                 }
-                .disabled(overlapsExistingPeriod)
+                .disabled(hasOverlapWarning)
             }
         }
     }
@@ -941,8 +1009,16 @@ private struct EntryDetailView: View {
         )
     }
 
+    private var overlapsExistingOvulation: Bool {
+        PeriodEntry.overlapsExisting(startDate: startDate, endDate: selectedEndDate, in: ovulationEntries)
+    }
+
+    private var hasOverlapWarning: Bool {
+        overlapsExistingOvulation || overlapsExistingPeriod
+    }
+
     private func save() {
-        guard !overlapsExistingPeriod else { return }
+        guard !hasOverlapWarning else { return }
         entry.startDate = startDate
         entry.endDate = selectedEndDate
         entry.symptoms = Array(selectedSymptoms)
@@ -953,6 +1029,7 @@ private struct EntryDetailView: View {
 
 private struct PrivacyView: View {
     let entries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
 
     var body: some View {
         NavigationStack {
@@ -972,19 +1049,20 @@ private struct PrivacyView: View {
                     Text("Cycle predictions are estimates for informational and personal tracking only. Ovylune is not a medical device and should not be used for diagnosis, treatment, contraception, or other medical decisions.")
                 }
             }
-            .ongoingPeriodEditor(entries: entries)
+            .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
         }
     }
 }
 
 private extension View {
-    func ongoingPeriodEditor(entries: [PeriodEntry]) -> some View {
-        modifier(OngoingPeriodEditorModifier(entries: entries))
+    func ongoingPeriodEditor(entries: [PeriodEntry], ovulationEntries: [OvulationEntry]) -> some View {
+        modifier(OngoingPeriodEditorModifier(entries: entries, ovulationEntries: ovulationEntries))
     }
 }
 
 private struct OngoingPeriodEditorModifier: ViewModifier {
     let entries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
     @State private var editingPeriod: PeriodEntry?
 
     private var ongoingPeriod: PeriodEntry? {
@@ -1004,7 +1082,7 @@ private struct OngoingPeriodEditorModifier: ViewModifier {
         }
         .navigationDestination(isPresented: isEditing) {
             if let editingPeriod {
-                EntryDetailView(entry: editingPeriod, entries: entries)
+                EntryDetailView(entry: editingPeriod, entries: entries, ovulationEntries: ovulationEntries)
             }
         }
     }

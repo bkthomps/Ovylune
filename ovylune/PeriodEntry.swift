@@ -56,6 +56,23 @@ final class PeriodEntry {
             return startsBeforeCandidateEnds && candidateStartsBeforeEnd
         }
     }
+
+    static func overlapsExisting(
+        startDate: Date,
+        endDate: Date?,
+        in entries: [OvulationEntry],
+        calendar: Calendar = .current
+    ) -> Bool {
+        let candidateStart = calendar.startOfDay(for: startDate)
+        let candidateEnd = endDate.map { calendar.startOfDay(for: $0) }
+
+        return entries.contains { entry in
+            let existingStart = calendar.startOfDay(for: entry.startDate)
+            let existingEnd = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
+            let startsBeforeCandidateEnds = candidateEnd.map { existingStart <= $0 } ?? true
+            return startsBeforeCandidateEnds && candidateStart <= existingEnd
+        }
+    }
 }
 
 @Model
