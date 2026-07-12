@@ -399,33 +399,62 @@ private struct OvulationTrackView: View {
 }
 
 private struct MonthPager: View {
+    private struct MonthData {
+        let periodDays: Set<Date>
+        let ovulationDays: Set<Date>
+        let predictedPeriodDays: Set<Date>
+        let predictedOvulationDays: Set<Date>
+        let predictedFertileDays: Set<Date>
+    }
+
+    private struct EntryVersion: Hashable {
+        let periods: [PeriodVersion]
+        let ovulations: [OvulationVersion]
+    }
+
+    private struct PeriodVersion: Hashable {
+        let startDate: Date
+        let endDate: Date?
+    }
+
+    private struct OvulationVersion: Hashable {
+        let startDate: Date
+        let endDate: Date?
+    }
+
+    private struct MonthKey: Hashable {
+        let year: Int
+        let month: Int
+    }
+
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     let isOvulationTrackingEnabled: Bool
 
     @State private var selectedOffset = 0
-    @State private var furthestPredictedOffset = 0
-    @State private var measuredHeights: [Int: CGFloat] = [:]
+    @State private var loadedCenterOffset = 0
+    @State private var measuredHeights: [MonthKey: CGFloat] = [:]
+    @State private var cachedMonths: [MonthKey: MonthData] = [:]
 
     private let calendar = Calendar.current
-    private let monthOffsets = Array(-120...120)
+
+    private var monthOffsets: [Int] {
+        Array((loadedCenterOffset - 6)...(loadedCenterOffset + 6))
+    }
 
     var body: some View {
-        let loggedDays = periodDays
-        let loggedOvulationDays = isOvulationTrackingEnabled ? ovulationDays : []
-        let predictedDays = predictedPeriodDays
-        let ovulationPrediction: (ovulationDays: Set<Date>, fertileDays: Set<Date>) =
-            isOvulationTrackingEnabled ? predictedOvulation : ([], [])
-
         TabView(selection: $selectedOffset) {
             ForEach(monthOffsets, id: \.self) { offset in
+                let displayedMonth = month(for: offset)
+                let key = monthKey(for: displayedMonth)
+                let data = cachedMonths[key] ?? makeMonthData(for: displayedMonth)
                 MonthCalendar(
-                    month: month(for: offset),
-                    periodDays: loggedDays,
-                    ovulationDays: loggedOvulationDays,
-                    predictedPeriodDays: predictedDays,
-                    predictedOvulationDays: ovulationPrediction.ovulationDays,
-                    predictedFertileDays: ovulationPrediction.fertileDays,
+                    month: displayedMonth,
+                    periodDays: data.periodDays,
+                    ovulationDays: isOvulationTrackingEnabled ? data.ovulationDays : [],
+                    predictedPeriodDays: data.predictedPeriodDays,
+                    predictedOvulationDays: isOvulationTrackingEnabled ? data.predictedOvulationDays : [],
+                    predictedFertileDays: isOvulationTrackingEnabled ? data.predictedFertileDays : [],
                     isOvulationTrackingEnabled: isOvulationTrackingEnabled
                 )
                 .padding(.vertical, 16)
@@ -433,8 +462,8 @@ private struct MonthPager: View {
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
                 } action: { height in
-                    guard height > 0, measuredHeights[offset] != height else { return }
-                    measuredHeights[offset] = height
+                    guard height > 0, measuredHeights[key] != height else { return }
+                    measuredHeights[key] = height
                 }
                 .tag(offset)
             }
@@ -442,42 +471,91 @@ private struct MonthPager: View {
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: pagerHeight)
         .animation(.easeInOut(duration: 0.2), value: selectedOffset)
+        .onAppear {
+            synchronizeMonthCache()
+        }
         .onChange(of: selectedOffset) { _, newOffset in
-            furthestPredictedOffset = max(furthestPredictedOffset, newOffset)
+            loadedCenterOffset = newOffset
+            synchronizeMonthCache()
+        }
+        .onChange(of: entryVersion) {
+            cachedMonths.removeAll(keepingCapacity: true)
+            synchronizeMonthCache()
         }
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
     private var pagerHeight: CGFloat {
-        measuredHeights[selectedOffset] ?? 340
+        measuredHeights[monthKey(for: month(for: selectedOffset))] ?? 340
     }
 
-    private var periodDays: Set<Date> {
+    private var entryVersion: EntryVersion {
+        EntryVersion(
+            periods: entries.map { PeriodVersion(startDate: $0.startDate, endDate: $0.endDate) },
+            ovulations: ovulationEntries.map {
+                OvulationVersion(startDate: $0.startDate, endDate: $0.endDate)
+            }
+        )
+    }
+
+    private func makeMonthData(for month: Date) -> MonthData {
+        let window = monthWindow(for: month)
+        let ovulationPrediction = predictedOvulation(within: window)
+        return MonthData(
+            periodDays: periodDays(within: window),
+            ovulationDays: ovulationDays(within: window),
+            predictedPeriodDays: predictedPeriodDays(within: window),
+            predictedOvulationDays: ovulationPrediction.ovulationDays,
+            predictedFertileDays: ovulationPrediction.fertileDays
+        )
+    }
+
+    private func synchronizeMonthCache() {
+        let loadedMonths = monthOffsets.map { month(for: $0) }
+        let loadedKeys = Set(loadedMonths.map(monthKey(for:)))
+        cachedMonths = cachedMonths.filter { loadedKeys.contains($0.key) }
+        measuredHeights = measuredHeights.filter { loadedKeys.contains($0.key) }
+
+        for month in loadedMonths {
+            let key = monthKey(for: month)
+            if cachedMonths[key] == nil {
+                cachedMonths[key] = makeMonthData(for: month)
+            }
+        }
+    }
+
+    private func periodDays(within window: DateInterval) -> Set<Date> {
         Set(entries.flatMap { entry in
-            daysCovered(by: entry)
+            daysCovered(by: entry, within: window)
         })
     }
 
-    private var predictedPeriodDays: Set<Date> {
+    private func predictedPeriodDays(within window: DateInterval) -> Set<Date> {
         let summary = CycleInsights.summary(for: entries, calendar: calendar)
         let periodLength = summary.averagePeriodLength ?? CycleInsights.fallbackPeriodLength
-        let cycleLength = summary.averageCycleLength ?? CycleInsights.fallbackCycleLength
+        let cycleLength = max(summary.averageCycleLength ?? CycleInsights.fallbackCycleLength, 1)
         var days: Set<Date> = []
 
-        if var predictedStart = summary.nextPeriodStart {
-            while predictedStart < predictionWindow.start {
-                guard let followingStart = calendar.date(
-                    byAdding: .day,
-                    value: cycleLength,
-                    to: predictedStart
-                ) else { break }
-                predictedStart = followingStart
-            }
+        if window.end > predictionWindowStart,
+           var predictedStart = summary.nextPeriodStart {
+            let earliestOverlappingStart = calendar.date(
+                byAdding: .day,
+                value: -(periodLength - 1),
+                to: window.start
+            ) ?? window.start
+            predictedStart = firstOccurrence(
+                startingOn: predictedStart,
+                interval: cycleLength,
+                onOrAfter: max(earliestOverlappingStart, predictionWindowStart)
+            )
 
-            while predictedStart < predictionWindow.end {
+            while predictedStart < window.end {
                 days.formUnion(
-                    predictedDays(startingOn: predictedStart, length: periodLength)
-                        .filter { predictionWindow.contains($0) }
+                    predictedDays(
+                        startingOn: predictedStart,
+                        length: periodLength,
+                        within: window
+                    )
                 )
 
                 guard let followingStart = calendar.date(
@@ -490,33 +568,37 @@ private struct MonthPager: View {
         }
 
         if let ongoingEntry = entries.first(where: { $0.endDate == nil }) {
-            days.formUnion(predictedDays(startingOn: ongoingEntry.startDate, length: periodLength))
+            days.formUnion(
+                predictedDays(
+                    startingOn: ongoingEntry.startDate,
+                    length: periodLength,
+                    within: window
+                )
+            )
         }
 
         return days
     }
 
-    private var ovulationDays: Set<Date> {
+    private func ovulationDays(within window: DateInterval) -> Set<Date> {
         Set(ovulationEntries.flatMap { entry in
             let start = calendar.startOfDay(for: entry.startDate)
             let end = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
-            let dayCount = max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
-
-            return (0...dayCount).compactMap {
-                calendar.date(byAdding: .day, value: $0, to: start)
-            }
+            return days(from: start, through: end, within: window)
         })
     }
 
-    private var predictedOvulation: (ovulationDays: Set<Date>, fertileDays: Set<Date>) {
+    private func predictedOvulation(
+        within window: DateInterval
+    ) -> (ovulationDays: Set<Date>, fertileDays: Set<Date>) {
         let summary = CycleInsights.summary(for: entries, calendar: calendar)
         let learnedInterval = CycleInsights.averageOvulationInterval(
             from: ovulationEntries,
             calendar: calendar
         )
-        let predictionInterval = learnedInterval
+        let predictionInterval = max(learnedInterval
             ?? summary.averageCycleLength
-            ?? CycleInsights.fallbackCycleLength
+            ?? CycleInsights.fallbackCycleLength, 1)
 
         var ovulationDays: Set<Date> = []
         var fertileDays: Set<Date> = []
@@ -524,23 +606,17 @@ private struct MonthPager: View {
         for entry in ovulationEntries {
             let start = calendar.startOfDay(for: entry.startDate)
             let end = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
-            let dayCount = max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
-
-            for offset in 0...dayCount {
-                if let day = calendar.date(byAdding: .day, value: offset, to: start) {
-                    ovulationDays.insert(day)
-                }
-            }
+            ovulationDays.formUnion(days(from: start, through: end, within: window))
 
             for offset in -CycleInsights.fertileDaysBeforeOvulation ..< 0 {
                 if let day = calendar.date(byAdding: .day, value: offset, to: start) {
-                    fertileDays.insert(day)
+                    if window.contains(day) { fertileDays.insert(day) }
                 }
             }
 
             for offset in 1...CycleInsights.fertileDaysAfterOvulation {
                 if let day = calendar.date(byAdding: .day, value: offset, to: end) {
-                    fertileDays.insert(day)
+                    if window.contains(day) { fertileDays.insert(day) }
                 }
             }
         }
@@ -551,22 +627,34 @@ private struct MonthPager: View {
             calendar: calendar
         ) else { return (ovulationDays, fertileDays) }
 
-        while ovulationDate < predictionWindow.start {
-            guard let followingDate = calendar.date(
-                byAdding: .day,
-                value: predictionInterval,
-                to: ovulationDate
-            ) else { return (ovulationDays, fertileDays) }
-            ovulationDate = followingDate
-        }
+        guard window.end > predictionWindowStart else { return (ovulationDays, fertileDays) }
 
-        while ovulationDate < predictionWindow.end {
-            ovulationDays.insert(calendar.startOfDay(for: ovulationDate))
+        let earliestRelevantOvulation = calendar.date(
+            byAdding: .day,
+            value: -CycleInsights.fertileDaysAfterOvulation,
+            to: window.start
+        ) ?? window.start
+        let latestRelevantOvulation = calendar.date(
+            byAdding: .day,
+            value: CycleInsights.fertileDaysBeforeOvulation,
+            to: window.end
+        ) ?? window.end
+        ovulationDate = firstOccurrence(
+            startingOn: ovulationDate,
+            interval: predictionInterval,
+            onOrAfter: max(earliestRelevantOvulation, predictionWindowStart)
+        )
+
+        while ovulationDate < latestRelevantOvulation {
+            let normalizedOvulationDate = calendar.startOfDay(for: ovulationDate)
+            if window.contains(normalizedOvulationDate) {
+                ovulationDays.insert(normalizedOvulationDate)
+            }
 
             for offset in -CycleInsights.fertileDaysBeforeOvulation...CycleInsights.fertileDaysAfterOvulation {
                 guard offset != 0 else { continue }
                 if let day = calendar.date(byAdding: .day, value: offset, to: ovulationDate),
-                   predictionWindow.contains(day) {
+                   window.contains(day) {
                     fertileDays.insert(calendar.startOfDay(for: day))
                 }
             }
@@ -582,22 +670,50 @@ private struct MonthPager: View {
         return (ovulationDays, fertileDays)
     }
 
-    private var predictionWindow: DateInterval {
-        let currentMonth = month(for: 0)
-        let start = calendar.dateInterval(of: .month, for: currentMonth)?.start ?? currentMonth
-        let end = calendar.date(
-            byAdding: .month,
-            value: furthestPredictedOffset + 4,
-            to: start
-        ) ?? start
+    private func monthWindow(for month: Date) -> DateInterval {
+        let start = calendar.dateInterval(of: .month, for: month)?.start ?? month
+        let end = calendar.date(byAdding: .month, value: 1, to: start) ?? start
         return DateInterval(start: start, end: end)
     }
 
-    private func predictedDays(startingOn startDate: Date, length: Int) -> Set<Date> {
+    private var predictionWindowStart: Date {
+        let currentMonth = month(for: 0)
+        return calendar.dateInterval(of: .month, for: currentMonth)?.start ?? currentMonth
+    }
+
+    private func firstOccurrence(
+        startingOn startDate: Date,
+        interval: Int,
+        onOrAfter targetDate: Date
+    ) -> Date {
         let start = calendar.startOfDay(for: startDate)
-        return Set((0..<length).compactMap {
-            calendar.date(byAdding: .day, value: $0, to: start)
-        })
+        guard start < targetDate else { return start }
+
+        let elapsedDays = max(calendar.dateComponents([.day], from: start, to: targetDate).day ?? 0, 0)
+        let intervalsToSkip = elapsedDays / interval
+        var result = calendar.date(
+            byAdding: .day,
+            value: intervalsToSkip * interval,
+            to: start
+        ) ?? start
+
+        if result < targetDate {
+            result = calendar.date(byAdding: .day, value: interval, to: result) ?? result
+        }
+        return result
+    }
+
+    private func predictedDays(
+        startingOn startDate: Date,
+        length: Int,
+        within window: DateInterval
+    ) -> Set<Date> {
+        let start = calendar.startOfDay(for: startDate)
+        guard length > 0,
+              let end = calendar.date(byAdding: .day, value: length - 1, to: start) else {
+            return []
+        }
+        return Set(days(from: start, through: end, within: window))
     }
 
     private func month(for offset: Int) -> Date {
@@ -606,10 +722,24 @@ private struct MonthPager: View {
         return calendar.date(byAdding: .month, value: offset, to: currentMonth) ?? currentMonth
     }
 
-    private func daysCovered(by entry: PeriodEntry) -> [Date] {
+    private func monthKey(for date: Date) -> MonthKey {
+        let components = calendar.dateComponents([.year, .month], from: date)
+        return MonthKey(year: components.year ?? 0, month: components.month ?? 0)
+    }
+
+    private func daysCovered(by entry: PeriodEntry, within window: DateInterval) -> [Date] {
         let start = calendar.startOfDay(for: entry.startDate)
         let end = calendar.startOfDay(for: entry.endDate ?? Date())
-        let dayCount = max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
+        return days(from: start, through: end, within: window)
+    }
+
+    private func days(from startDate: Date, through endDate: Date, within window: DateInterval) -> [Date] {
+        let start = max(calendar.startOfDay(for: startDate), window.start)
+        let inclusiveWindowEnd = calendar.date(byAdding: .day, value: -1, to: window.end) ?? window.end
+        let end = min(calendar.startOfDay(for: endDate), inclusiveWindowEnd)
+        guard start <= end else { return [] }
+
+        let dayCount = calendar.dateComponents([.day], from: start, to: end).day ?? 0
 
         return (0...dayCount).compactMap {
             calendar.date(byAdding: .day, value: $0, to: start)
