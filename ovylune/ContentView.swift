@@ -845,6 +845,8 @@ private struct DayCell: View {
     let isPredictedOvulation: Bool
     let isPredictedFertile: Bool
 
+    @State private var isShowingStatus = false
+
     private let calendar = Calendar.current
 
     private var isPeriodDay: Bool {
@@ -856,57 +858,96 @@ private struct DayCell: View {
     }
 
     var body: some View {
-        ZStack {
-            // Give highlighted and unhighlighted dates the same square layout
-            // footprint. The decoration can then fill the cell without changing
-            // the grid row's height.
-            Color.clear
-                .aspectRatio(1, contentMode: .fit)
+        Button {
+            isShowingStatus = !statusLabels.isEmpty
+        } label: {
+            ZStack {
+                // Give highlighted and unhighlighted dates the same square layout
+                // footprint. The decoration can then fill the cell without changing
+                // the grid row's height.
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
 
-            if isPeriodDay {
-                Circle()
-                    .fill(.pink.opacity(0.18))
-            } else if isPredictedOvulation {
-                Circle()
-                    .fill(.purple.opacity(0.16))
-            } else if isPredictedFertile {
-                Circle()
-                    .fill(.blue.opacity(0.14))
-            }
-
-            Text(dayNumber)
-                .font(.subheadline.weight(isHighlightedDay ? .semibold : .regular))
-                .foregroundStyle(
-                    isPeriodDay ? .pink
-                        : isPredictedOvulation ? .purple
-                        : isPredictedFertile ? .blue
-                        : .primary
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .allowsTightening(true)
-                .frame(maxWidth: .infinity)
-
-            if hasPeriod || hasOvulation {
-                HStack(spacing: 2) {
-                    if hasPeriod {
-                        Circle()
-                            .fill(.pink)
-                            .frame(width: 5, height: 5)
-                    }
-                    if hasOvulation {
-                        Circle()
-                            .fill(.purple)
-                            .frame(width: 5, height: 5)
-                    }
+                if isPeriodDay {
+                    Circle()
+                        .fill(.pink.opacity(0.18))
+                } else if isPredictedOvulation {
+                    Circle()
+                        .fill(.purple.opacity(0.16))
+                } else if isPredictedFertile {
+                    Circle()
+                        .fill(.blue.opacity(0.14))
                 }
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 5)
+
+                Text(dayNumber)
+                    .font(.subheadline.weight(isHighlightedDay ? .semibold : .regular))
+                    .foregroundStyle(
+                        isPeriodDay ? .pink
+                            : isPredictedOvulation ? .purple
+                            : isPredictedFertile ? .blue
+                            : .primary
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .allowsTightening(true)
+                    .frame(maxWidth: .infinity)
+
+                if hasPeriod || hasOvulation {
+                    HStack(spacing: 2) {
+                        if hasPeriod {
+                            Circle()
+                                .fill(.pink)
+                                .frame(width: 5, height: 5)
+                        }
+                        if hasOvulation {
+                            Circle()
+                                .fill(.purple)
+                                .frame(width: 5, height: 5)
+                        }
+                    }
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 5)
+                }
             }
         }
+        .buttonStyle(.plain)
+        .disabled(statusLabels.isEmpty)
         .frame(maxWidth: .infinity)
         .opacity(day.date == nil ? 0 : 1)
         .accessibilityLabel(accessibilityLabel)
+        .popover(isPresented: $isShowingStatus, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(statusLabels, id: \.self) { label in
+                    Text(label)
+                        .font(.subheadline.weight(.medium))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private var statusLabels: [String] {
+        var labels: [String] = []
+
+        if hasPeriod {
+            labels.append("Period")
+        } else if isPredictedPeriod {
+            labels.append("Period Predicted")
+        }
+
+        if hasOvulation {
+            labels.append("Ovulation")
+        } else if isPredictedOvulation {
+            labels.append("Ovulation Predicted")
+        }
+
+        if isPredictedFertile {
+            labels.append("Fertile Day Predicted")
+        }
+
+        return labels
     }
 
     private var dayNumber: String {
