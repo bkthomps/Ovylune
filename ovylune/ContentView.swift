@@ -28,9 +28,9 @@ struct ContentView: View {
                     Label("Track", systemImage: "plus.circle")
                 }
 
-            PrivacyView(entries: entries, ovulationEntries: ovulationEntries)
+            SettingsView(entries: entries, ovulationEntries: ovulationEntries)
                 .tabItem {
-                    Label("Privacy", systemImage: "lock.shield")
+                    Label("Settings", systemImage: "gearshape")
                 }
         }
     }
@@ -77,6 +77,7 @@ private struct TrackView: View {
     @State private var hasEndDate = true
     @State private var selectedSymptoms: Set<String> = []
     @State private var notes = ""
+    @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
 
     var body: some View {
         NavigationStack {
@@ -120,7 +121,9 @@ private struct TrackView: View {
                     DatePicker("Ended on", selection: $endDate, in: startDate..., displayedComponents: .date)
                 }
 
-                SymptomPicker(selection: $selectedSymptoms)
+                if !availableSymptoms.isEmpty {
+                    SymptomPicker(symptoms: availableSymptoms, selection: $selectedSymptoms)
+                }
 
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(2...5)
@@ -154,6 +157,10 @@ private struct TrackView: View {
 
     private var selectedEndDate: Date? {
         hasEndDate ? endDate : nil
+    }
+
+    private var availableSymptoms: [String] {
+        SymptomCatalog.decode(storedSymptoms)
     }
 
     private var overlapsExistingPeriod: Bool {
@@ -786,18 +793,8 @@ private struct InsightTile: View {
 }
 
 private struct SymptomPicker: View {
+    let symptoms: [String]
     @Binding var selection: Set<String>
-
-    private let symptoms = [
-        "Cramps",
-        "Headache",
-        "Fatigue",
-        "Bloating",
-        "Acne",
-        "Tenderness",
-        "Mood shifts",
-        "Cravings"
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1065,6 +1062,7 @@ private struct EntryDetailView: View {
     @State private var selectedSymptoms: Set<String>
     @State private var hasEndDate: Bool
     @State private var notes: String
+    @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
 
     init(entry: PeriodEntry, entries: [PeriodEntry], ovulationEntries: [OvulationEntry]) {
         self.entry = entry
@@ -1097,8 +1095,10 @@ private struct EntryDetailView: View {
                 }
             }
 
-            Section {
-                SymptomPicker(selection: $selectedSymptoms)
+            if !availableSymptoms.isEmpty {
+                Section {
+                    SymptomPicker(symptoms: availableSymptoms, selection: $selectedSymptoms)
+                }
             }
 
             Section("Notes") {
@@ -1136,6 +1136,10 @@ private struct EntryDetailView: View {
         hasEndDate ? endDate : nil
     }
 
+    private var availableSymptoms: [String] {
+        SymptomCatalog.decode(storedSymptoms)
+    }
+
     private var overlapsExistingPeriod: Bool {
         PeriodEntry.overlapsExisting(
             startDate: startDate,
@@ -1163,14 +1167,31 @@ private struct EntryDetailView: View {
     }
 }
 
-private struct PrivacyView: View {
+private struct SettingsView: View {
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
+    @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
+    @State private var newSymptom = ""
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
+                Section("Symptoms") {
+                    HStack {
+                        TextField("Add a symptom", text: $newSymptom)
+                            .onSubmit(addSymptom)
+
+                        Button("Add", action: addSymptom)
+                            .disabled(!canAddSymptom)
+                    }
+
+                    ForEach(symptoms, id: \.self) { symptom in
+                        Text(symptom)
+                    }
+                    .onDelete(perform: deleteSymptoms)
+                }
+
+                Section("Privacy") {
                     Label("No account required", systemImage: "person.crop.circle.badge.xmark")
                     Label("No data is uploaded", systemImage: "icloud.slash")
                     Label("No analytics collected", systemImage: "chart.bar.xaxis")
@@ -1183,6 +1204,54 @@ private struct PrivacyView: View {
             }
             .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
         }
+    }
+
+    private var symptoms: [String] {
+        SymptomCatalog.decode(storedSymptoms)
+    }
+
+    private var trimmedNewSymptom: String {
+        newSymptom.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canAddSymptom: Bool {
+        !trimmedNewSymptom.isEmpty && !symptoms.contains {
+            $0.compare(trimmedNewSymptom, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
+
+    private func addSymptom() {
+        guard canAddSymptom else { return }
+        storedSymptoms = SymptomCatalog.encode(symptoms + [trimmedNewSymptom])
+        newSymptom = ""
+    }
+
+    private func deleteSymptoms(at offsets: IndexSet) {
+        var updatedSymptoms = symptoms
+        updatedSymptoms.remove(atOffsets: offsets)
+        storedSymptoms = SymptomCatalog.encode(updatedSymptoms)
+    }
+}
+
+private enum SymptomCatalog {
+    static let storageKey = "availableSymptoms"
+    static let defaults = [
+        "Cramps", "Headache", "Fatigue", "Bloating", "Tenderness", "Mood shifts"
+    ]
+    static let defaultEncoded = encode(defaults)
+
+    static func encode(_ symptoms: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(symptoms),
+              let encoded = String(data: data, encoding: .utf8)
+        else { return "[]" }
+        return encoded
+    }
+
+    static func decode(_ encoded: String) -> [String] {
+        guard let data = encoded.data(using: .utf8),
+              let symptoms = try? JSONDecoder().decode([String].self, from: data)
+        else { return defaults }
+        return symptoms
     }
 }
 
