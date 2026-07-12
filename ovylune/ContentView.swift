@@ -338,7 +338,7 @@ private struct IntimacyTrackView: View {
             Section {
                 DatePicker("On", selection: $date, in: SelectableDates.range, displayedComponents: .date)
 
-                Toggle("Track Pregnancy", isOn: $trackPregnancy)
+                Toggle("Mark as Pregnancy Risk", isOn: $trackPregnancy)
 
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(2...5)
@@ -1281,7 +1281,7 @@ private struct IntimacyHistoryContent: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(entry.date.formatted(.dateTime.month(.abbreviated).day().year()))
                             .font(.headline)
-                        Text(entry.trackPregnancy ? "Tracked for pregnancy" : "Not tracked for pregnancy")
+                        Text(entry.trackPregnancy ? "Pregnancy risk" : "No pregnancy risk")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         if !entry.notes.isEmpty {
@@ -1319,7 +1319,7 @@ private struct IntimacyEntryDetailView: View {
         Form {
             Section("Date") {
                 DatePicker("On", selection: $date, in: SelectableDates.range, displayedComponents: .date)
-                Toggle("Track Pregnancy", isOn: $trackPregnancy)
+                Toggle("Mark as Pregnancy Risk", isOn: $trackPregnancy)
             }
 
             Section("Notes") {
