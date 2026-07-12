@@ -165,17 +165,22 @@ private struct MonthPager: View {
     let entries: [PeriodEntry]
 
     @State private var selectedOffset = 0
+    @State private var furthestPredictedOffset = 0
     @State private var measuredHeights: [Int: CGFloat] = [:]
 
     private let calendar = Calendar.current
     private let monthOffsets = Array(-120...120)
 
     var body: some View {
+        let loggedDays = periodDays
+        let predictedDays = predictedPeriodDays
+
         TabView(selection: $selectedOffset) {
             ForEach(monthOffsets, id: \.self) { offset in
                 MonthCalendar(
                     month: month(for: offset),
-                    periodDays: periodDays
+                    periodDays: loggedDays,
+                    predictedPeriodDays: predictedDays
                 )
                 .padding(.vertical, 16)
                 .fixedSize(horizontal: false, vertical: true)
@@ -191,6 +196,9 @@ private struct MonthPager: View {
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: pagerHeight)
         .animation(.easeInOut(duration: 0.2), value: selectedOffset)
+        .onChange(of: selectedOffset) { _, newOffset in
+            furthestPredictedOffset = max(furthestPredictedOffset, newOffset)
+        }
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
@@ -201,6 +209,62 @@ private struct MonthPager: View {
     private var periodDays: Set<Date> {
         Set(entries.flatMap { entry in
             daysCovered(by: entry)
+        })
+    }
+
+    private var predictedPeriodDays: Set<Date> {
+        let summary = CycleInsights.summary(for: entries, calendar: calendar)
+        let periodLength = summary.averagePeriodLength ?? CycleInsights.fallbackPeriodLength
+        let cycleLength = summary.averageCycleLength ?? CycleInsights.fallbackCycleLength
+        var days: Set<Date> = []
+
+        if var predictedStart = summary.nextPeriodStart {
+            while predictedStart < predictionWindow.start {
+                guard let followingStart = calendar.date(
+                    byAdding: .day,
+                    value: cycleLength,
+                    to: predictedStart
+                ) else { break }
+                predictedStart = followingStart
+            }
+
+            while predictedStart < predictionWindow.end {
+                days.formUnion(
+                    predictedDays(startingOn: predictedStart, length: periodLength)
+                        .filter { predictionWindow.contains($0) }
+                )
+
+                guard let followingStart = calendar.date(
+                    byAdding: .day,
+                    value: cycleLength,
+                    to: predictedStart
+                ) else { break }
+                predictedStart = followingStart
+            }
+        }
+
+        if let ongoingEntry = entries.first(where: { $0.endDate == nil }) {
+            days.formUnion(predictedDays(startingOn: ongoingEntry.startDate, length: periodLength))
+        }
+
+        return days
+    }
+
+    private var predictionWindow: DateInterval {
+        let currentMonth = month(for: 0)
+        let start = calendar.dateInterval(of: .month, for: currentMonth)?.start ?? currentMonth
+        let end = calendar.date(
+            byAdding: .month,
+            value: furthestPredictedOffset + 4,
+            to: start
+        ) ?? start
+        return DateInterval(start: start, end: end)
+    }
+
+    private func predictedDays(startingOn startDate: Date, length: Int) -> Set<Date> {
+        let start = calendar.startOfDay(for: startDate)
+        return Set((0..<length).compactMap {
+            calendar.date(byAdding: .day, value: $0, to: start)
         })
     }
 
@@ -224,6 +288,7 @@ private struct MonthPager: View {
 private struct MonthCalendar: View {
     let month: Date
     let periodDays: Set<Date>
+    let predictedPeriodDays: Set<Date>
 
     private let calendar = Calendar.current
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
@@ -243,7 +308,12 @@ private struct MonthCalendar: View {
                 }
 
                 ForEach(calendarDays, id: \.id) { day in
-                    DayCell(day: day, hasPeriod: day.date.map { periodDays.contains(calendar.startOfDay(for: $0)) } ?? false)
+                    let date = day.date.map { calendar.startOfDay(for: $0) }
+                    DayCell(
+                        day: day,
+                        hasPeriod: date.map(periodDays.contains) ?? false,
+                        isPredictedPeriod: date.map(predictedPeriodDays.contains) ?? false
+                    )
                 }
             }
 
@@ -300,19 +370,24 @@ private struct CalendarDay {
 private struct DayCell: View {
     let day: CalendarDay
     let hasPeriod: Bool
+    let isPredictedPeriod: Bool
 
     private let calendar = Calendar.current
 
+    private var isPeriodDay: Bool {
+        hasPeriod || isPredictedPeriod
+    }
+
     var body: some View {
         ZStack {
-            if hasPeriod {
+            if isPeriodDay {
                 Circle()
                     .fill(.pink.opacity(0.18))
             }
 
             Text(dayNumber)
-                .font(.subheadline.weight(hasPeriod ? .semibold : .regular))
-                .foregroundStyle(hasPeriod ? .pink : .primary)
+                .font(.subheadline.weight(isPeriodDay ? .semibold : .regular))
+                .foregroundStyle(isPeriodDay ? .pink : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .allowsTightening(true)
@@ -340,7 +415,9 @@ private struct DayCell: View {
     private var accessibilityLabel: String {
         guard let date = day.date else { return "Empty day" }
         let formatted = date.formatted(.dateTime.month(.wide).day().year())
-        return hasPeriod ? "\(formatted), period logged" : formatted
+        if hasPeriod { return "\(formatted), period logged" }
+        if isPredictedPeriod { return "\(formatted), period predicted" }
+        return formatted
     }
 }
 
