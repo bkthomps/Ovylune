@@ -21,6 +21,8 @@ enum CycleInsights {
     static let fallbackLutealPhaseLength = 14
     static let fertileDaysBeforeOvulation = 5
     static let fertileDaysAfterOvulation = 1
+    static let cycleLengthHalfLifeDays = 365.0
+    static let periodLengthHalfLifeDays = 730.0
 
     static func summary(for entries: [PeriodEntry], calendar: Calendar = .current) -> CycleSummary {
         let sorted = entries.sorted { $0.startDate < $1.startDate }
@@ -48,25 +50,57 @@ enum CycleInsights {
 
         guard sortedStarts.count >= 2 else { return nil }
 
-        let gaps = zip(sortedStarts, sortedStarts.dropFirst()).compactMap { previous, current in
-            calendar.dateComponents([.day], from: previous, to: current).day
+        let gaps = zip(sortedStarts, sortedStarts.dropFirst()).compactMap { previous, current -> (value: Int, date: Date)? in
+            guard let days = calendar.dateComponents([.day], from: previous, to: current).day else {
+                return nil
+            }
+            return (days, current)
         }
 
         guard !gaps.isEmpty else { return nil }
-        return Int((Double(gaps.reduce(0, +)) / Double(gaps.count)).rounded())
+        return recencyWeightedAverage(
+            of: gaps,
+            halfLifeDays: cycleLengthHalfLifeDays,
+            calendar: calendar
+        )
     }
 
     static func averagePeriodLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Int? {
-        let lengths = entries.compactMap { entry -> Int? in
+        let lengths = entries.compactMap { entry -> (value: Int, date: Date)? in
             guard let endDate = entry.endDate else { return nil }
             let start = calendar.startOfDay(for: entry.startDate)
             let end = calendar.startOfDay(for: endDate)
             guard end >= start else { return nil }
-            return (calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1
+            return ((calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1, start)
         }
 
         guard !lengths.isEmpty else { return nil }
-        return Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded())
+        return recencyWeightedAverage(
+            of: lengths,
+            halfLifeDays: periodLengthHalfLifeDays,
+            calendar: calendar
+        )
+    }
+
+    private static func recencyWeightedAverage(
+        of observations: [(value: Int, date: Date)],
+        halfLifeDays: Double,
+        calendar: Calendar
+    ) -> Int? {
+        guard let newestDate = observations.map(\.date).max(), halfLifeDays > 0 else { return nil }
+
+        let weighted = observations.reduce(into: (sum: 0.0, weight: 0.0)) { result, observation in
+            let ageInDays = max(
+                calendar.dateComponents([.day], from: observation.date, to: newestDate).day ?? 0,
+                0
+            )
+            let weight = pow(0.5, Double(ageInDays) / halfLifeDays)
+            result.sum += Double(observation.value) * weight
+            result.weight += weight
+        }
+
+        guard weighted.weight > 0 else { return nil }
+        return Int((weighted.sum / weighted.weight).rounded())
     }
 
     static func averageOvulationInterval(

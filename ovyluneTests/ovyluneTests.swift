@@ -31,6 +31,29 @@ struct ovyluneTests {
         #expect(CycleInsights.averagePeriodLength(from: entries, calendar: calendar) == 5)
     }
 
+    @Test func averageCycleLengthFavorsRecentCyclesWithOneYearHalfLife() {
+        let offsets = [0, 100] + (1...10).map { 100 + ($0 * 28) }
+        let entries = offsets.map { offset in
+            PeriodEntry(
+                startDate: calendar.date(byAdding: .day, value: offset, to: date(2020, 1, 1))!
+            )
+        }
+
+        // An unweighted mean rounds to 35; decay pulls the estimate toward the
+        // ten recent 28-day cycles.
+        #expect(CycleInsights.averageCycleLength(from: entries, calendar: calendar) == 33)
+    }
+
+    @Test func averagePeriodLengthFavorsRecentPeriodsWithTwoYearHalfLife() {
+        let entries = [
+            PeriodEntry(startDate: date(2018, 1, 1), endDate: date(2018, 1, 10)),
+            PeriodEntry(startDate: date(2022, 1, 1), endDate: date(2022, 1, 4))
+        ]
+
+        // Four years makes the older 10-day period one quarter as influential.
+        #expect(CycleInsights.averagePeriodLength(from: entries, calendar: calendar) == 5)
+    }
+
     @Test func summaryPredictsNextPeriodFromLastLoggedStart() {
         let entries = [
             PeriodEntry(startDate: date(2026, 1, 1)),
