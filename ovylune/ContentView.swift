@@ -53,6 +53,7 @@ private struct CalendarView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .listSectionSpacing(16)
             .navigationTitle("Calendar")
         }
     }
@@ -155,8 +156,15 @@ private struct MonthPager: View {
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(minHeight: 330)
-        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+        .frame(height: pagerHeight)
+        .animation(.easeInOut(duration: 0.2), value: selectedOffset)
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+    }
+
+    private var pagerHeight: CGFloat {
+        let displayedMonth = month(for: selectedOffset)
+        let weekCount = calendar.range(of: .weekOfMonth, in: .month, for: displayedMonth)?.count ?? 6
+        return CGFloat(weekCount * 45 + 13)
     }
 
     private var periodDays: Set<Date> {
@@ -218,7 +226,6 @@ private struct MonthCalendar: View {
                 Spacer()
             }
         }
-        .padding(.vertical, 4)
     }
 
     private var weekdaySymbols: [String] {
