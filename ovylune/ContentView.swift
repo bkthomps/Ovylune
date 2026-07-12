@@ -320,6 +320,7 @@ private struct MonthPager: View {
         let loggedDays = periodDays
         let loggedOvulationDays = ovulationDays
         let predictedDays = predictedPeriodDays
+        let ovulationPrediction = predictedOvulation
 
         TabView(selection: $selectedOffset) {
             ForEach(monthOffsets, id: \.self) { offset in
@@ -327,7 +328,9 @@ private struct MonthPager: View {
                     month: month(for: offset),
                     periodDays: loggedDays,
                     ovulationDays: loggedOvulationDays,
-                    predictedPeriodDays: predictedDays
+                    predictedPeriodDays: predictedDays,
+                    predictedOvulationDays: ovulationPrediction.ovulationDays,
+                    predictedFertileDays: ovulationPrediction.fertileDays
                 )
                 .padding(.vertical, 16)
                 .fixedSize(horizontal: false, vertical: true)
@@ -409,6 +412,80 @@ private struct MonthPager: View {
         })
     }
 
+    private var predictedOvulation: (ovulationDays: Set<Date>, fertileDays: Set<Date>) {
+        let summary = CycleInsights.summary(for: entries, calendar: calendar)
+        let learnedInterval = CycleInsights.averageOvulationInterval(
+            from: ovulationEntries,
+            calendar: calendar
+        )
+        let predictionInterval = learnedInterval
+            ?? summary.averageCycleLength
+            ?? CycleInsights.fallbackCycleLength
+
+        var ovulationDays: Set<Date> = []
+        var fertileDays: Set<Date> = []
+
+        for entry in ovulationEntries {
+            let start = calendar.startOfDay(for: entry.startDate)
+            let end = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
+            let dayCount = max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
+
+            for offset in 0...dayCount {
+                if let day = calendar.date(byAdding: .day, value: offset, to: start) {
+                    ovulationDays.insert(day)
+                }
+            }
+
+            for offset in -CycleInsights.fertileDaysBeforeOvulation ..< 0 {
+                if let day = calendar.date(byAdding: .day, value: offset, to: start) {
+                    fertileDays.insert(day)
+                }
+            }
+
+            for offset in 1...CycleInsights.fertileDaysAfterOvulation {
+                if let day = calendar.date(byAdding: .day, value: offset, to: end) {
+                    fertileDays.insert(day)
+                }
+            }
+        }
+
+        guard var ovulationDate = CycleInsights.nextOvulationDate(
+            from: ovulationEntries,
+            nextPeriodStart: summary.nextPeriodStart,
+            calendar: calendar
+        ) else { return (ovulationDays, fertileDays) }
+
+        while ovulationDate < predictionWindow.start {
+            guard let followingDate = calendar.date(
+                byAdding: .day,
+                value: predictionInterval,
+                to: ovulationDate
+            ) else { return (ovulationDays, fertileDays) }
+            ovulationDate = followingDate
+        }
+
+        while ovulationDate < predictionWindow.end {
+            ovulationDays.insert(calendar.startOfDay(for: ovulationDate))
+
+            for offset in -CycleInsights.fertileDaysBeforeOvulation...CycleInsights.fertileDaysAfterOvulation {
+                guard offset != 0 else { continue }
+                if let day = calendar.date(byAdding: .day, value: offset, to: ovulationDate),
+                   predictionWindow.contains(day) {
+                    fertileDays.insert(calendar.startOfDay(for: day))
+                }
+            }
+
+            guard let followingDate = calendar.date(
+                byAdding: .day,
+                value: predictionInterval,
+                to: ovulationDate
+            ) else { break }
+            ovulationDate = followingDate
+        }
+
+        return (ovulationDays, fertileDays)
+    }
+
     private var predictionWindow: DateInterval {
         let currentMonth = month(for: 0)
         let start = calendar.dateInterval(of: .month, for: currentMonth)?.start ?? currentMonth
@@ -449,6 +526,8 @@ private struct MonthCalendar: View {
     let periodDays: Set<Date>
     let ovulationDays: Set<Date>
     let predictedPeriodDays: Set<Date>
+    let predictedOvulationDays: Set<Date>
+    let predictedFertileDays: Set<Date>
 
     private let calendar = Calendar.current
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
@@ -473,7 +552,9 @@ private struct MonthCalendar: View {
                         day: day,
                         hasPeriod: date.map(periodDays.contains) ?? false,
                         hasOvulation: date.map(ovulationDays.contains) ?? false,
-                        isPredictedPeriod: date.map(predictedPeriodDays.contains) ?? false
+                        isPredictedPeriod: date.map(predictedPeriodDays.contains) ?? false,
+                        isPredictedOvulation: date.map(predictedOvulationDays.contains) ?? false,
+                        isPredictedFertile: date.map(predictedFertileDays.contains) ?? false
                     )
                 }
             }
@@ -540,6 +621,8 @@ private struct DayCell: View {
     let hasPeriod: Bool
     let hasOvulation: Bool
     let isPredictedPeriod: Bool
+    let isPredictedOvulation: Bool
+    let isPredictedFertile: Bool
 
     private let calendar = Calendar.current
 
@@ -547,16 +630,31 @@ private struct DayCell: View {
         hasPeriod || isPredictedPeriod
     }
 
+    private var isHighlightedDay: Bool {
+        isPeriodDay || isPredictedOvulation || isPredictedFertile
+    }
+
     var body: some View {
         ZStack {
             if isPeriodDay {
                 Circle()
                     .fill(.pink.opacity(0.18))
+            } else if isPredictedOvulation {
+                Circle()
+                    .fill(.purple.opacity(0.16))
+            } else if isPredictedFertile {
+                Circle()
+                    .fill(.blue.opacity(0.14))
             }
 
             Text(dayNumber)
-                .font(.subheadline.weight(isPeriodDay ? .semibold : .regular))
-                .foregroundStyle(isPeriodDay ? .pink : .primary)
+                .font(.subheadline.weight(isHighlightedDay ? .semibold : .regular))
+                .foregroundStyle(
+                    isPeriodDay ? .pink
+                        : isPredictedOvulation ? .purple
+                        : isPredictedFertile ? .blue
+                        : .primary
+                )
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .allowsTightening(true)
@@ -597,6 +695,8 @@ private struct DayCell: View {
         if hasPeriod { return "\(formatted), period logged" }
         if hasOvulation { return "\(formatted), ovulation logged" }
         if isPredictedPeriod { return "\(formatted), period predicted" }
+        if isPredictedOvulation { return "\(formatted), ovulation predicted" }
+        if isPredictedFertile { return "\(formatted), fertile window predicted" }
         return formatted
     }
 }

@@ -76,6 +76,35 @@ struct ovyluneTests {
         )
     }
 
+    @Test func predictsOvulationFromLoggedOvulationIntervalWhenEnoughDataExists() {
+        let ovulations = [
+            OvulationEntry(startDate: date(2026, 1, 14)),
+            OvulationEntry(startDate: date(2026, 2, 12)),
+            OvulationEntry(startDate: date(2026, 3, 12))
+        ]
+
+        #expect(CycleInsights.averageOvulationInterval(from: ovulations, calendar: calendar) == 29)
+        #expect(
+            CycleInsights.nextOvulationDate(
+                from: ovulations,
+                nextPeriodStart: date(2026, 4, 10),
+                calendar: calendar
+            ) == date(2026, 4, 10)
+        )
+    }
+
+    @Test func predictsOvulationFourteenDaysBeforeNextPeriodWithoutEnoughOvulationData() {
+        let ovulations = [OvulationEntry(startDate: date(2026, 1, 14))]
+
+        #expect(
+            CycleInsights.nextOvulationDate(
+                from: ovulations,
+                nextPeriodStart: date(2026, 3, 20),
+                calendar: calendar
+            ) == date(2026, 3, 6)
+        )
+    }
+
     @Test func detectsInclusiveAndOngoingOverlaps() {
         let entries = [
             PeriodEntry(startDate: date(2026, 1, 10), endDate: date(2026, 1, 14)),

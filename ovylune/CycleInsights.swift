@@ -18,6 +18,9 @@ struct CycleSummary {
 enum CycleInsights {
     static let fallbackCycleLength = 28
     static let fallbackPeriodLength = 5
+    static let fallbackLutealPhaseLength = 14
+    static let fertileDaysBeforeOvulation = 5
+    static let fertileDaysAfterOvulation = 1
 
     static func summary(for entries: [PeriodEntry], calendar: Calendar = .current) -> CycleSummary {
         let sorted = entries.sorted { $0.startDate < $1.startDate }
@@ -64,6 +67,46 @@ enum CycleInsights {
 
         guard !lengths.isEmpty else { return nil }
         return Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded())
+    }
+
+    static func averageOvulationInterval(
+        from entries: [OvulationEntry],
+        calendar: Calendar = .current
+    ) -> Int? {
+        let sortedStarts = entries
+            .map { calendar.startOfDay(for: $0.startDate) }
+            .sorted()
+
+        guard sortedStarts.count >= 2 else { return nil }
+
+        let gaps = zip(sortedStarts, sortedStarts.dropFirst()).compactMap { previous, current in
+            calendar.dateComponents([.day], from: previous, to: current).day
+        }
+
+        guard !gaps.isEmpty else { return nil }
+        return Int((Double(gaps.reduce(0, +)) / Double(gaps.count)).rounded())
+    }
+
+    static func nextOvulationDate(
+        from ovulationEntries: [OvulationEntry],
+        nextPeriodStart: Date?,
+        calendar: Calendar = .current
+    ) -> Date? {
+        if let interval = averageOvulationInterval(from: ovulationEntries, calendar: calendar),
+           let latest = ovulationEntries.map(\.startDate).max() {
+            return calendar.date(
+                byAdding: .day,
+                value: interval,
+                to: calendar.startOfDay(for: latest)
+            )
+        }
+
+        guard let nextPeriodStart else { return nil }
+        return calendar.date(
+            byAdding: .day,
+            value: -fallbackLutealPhaseLength,
+            to: calendar.startOfDay(for: nextPeriodStart)
+        )
     }
 
     static func estimatedPeriodEnd(
