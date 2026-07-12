@@ -206,7 +206,7 @@ private struct OvulationTrackView: View {
             Section {
                 DatePicker("Started", selection: $startDate, displayedComponents: .date)
                     .onChange(of: startDate) { _, newValue in
-                        endDate = max(endDate, newValue)
+                        endDate = newValue
                     }
 
                 Toggle("Multiple Days", isOn: $multipleDays.animation())
@@ -218,10 +218,16 @@ private struct OvulationTrackView: View {
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(2...5)
 
-                Button {
-                    addEntry()
-                } label: {
-                    Label("Save ovulation", systemImage: "plus.circle.fill")
+                if overlapsExistingOvulation {
+                    Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                } else {
+                    Button {
+                        addEntry()
+                    } label: {
+                        Label("Save ovulation", systemImage: "plus.circle.fill")
+                    }
                 }
             }
 
@@ -231,10 +237,23 @@ private struct OvulationTrackView: View {
         }
     }
 
+    private var selectedEndDate: Date? {
+        multipleDays ? endDate : nil
+    }
+
+    private var overlapsExistingOvulation: Bool {
+        OvulationEntry.overlapsExisting(
+            startDate: startDate,
+            endDate: selectedEndDate,
+            in: entries
+        )
+    }
+
     private func addEntry() {
+        guard !overlapsExistingOvulation else { return }
         modelContext.insert(OvulationEntry(
             startDate: startDate,
-            endDate: multipleDays ? endDate : nil,
+            endDate: selectedEndDate,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
         ))
         startDate = Date()
@@ -676,7 +695,7 @@ private struct OvulationHistoryContent: View {
         } else {
             ForEach(entries) { entry in
                 NavigationLink {
-                    OvulationEntryDetailView(entry: entry)
+                    OvulationEntryDetailView(entry: entry, entries: entries)
                 } label: {
                     OvulationEntryRow(entry: entry)
                 }
@@ -715,13 +734,15 @@ private struct OvulationEntryRow: View {
 private struct OvulationEntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var entry: OvulationEntry
+    let entries: [OvulationEntry]
     @State private var startDate: Date
     @State private var endDate: Date
     @State private var multipleDays: Bool
     @State private var notes: String
 
-    init(entry: OvulationEntry) {
+    init(entry: OvulationEntry, entries: [OvulationEntry]) {
         self.entry = entry
+        self.entries = entries
         _startDate = State(initialValue: entry.startDate)
         _endDate = State(initialValue: entry.endDate ?? entry.startDate)
         _multipleDays = State(initialValue: entry.endDate != nil)
@@ -733,7 +754,7 @@ private struct OvulationEntryDetailView: View {
             Section("Dates") {
                 DatePicker("Started", selection: $startDate, displayedComponents: .date)
                     .onChange(of: startDate) { _, newValue in
-                        endDate = max(endDate, newValue)
+                        endDate = newValue
                     }
 
                 Toggle("Multiple Days", isOn: $multipleDays.animation())
@@ -747,18 +768,45 @@ private struct OvulationEntryDetailView: View {
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(3...8)
             }
+
+
+            if overlapsExistingOvulation {
+                Section {
+                    Label("These dates overlap a saved ovulation.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                }
+            }
         }
         .navigationTitle("Ovulation")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
-                    entry.startDate = startDate
-                    entry.endDate = multipleDays ? endDate : nil
-                    entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-                    dismiss()
+                    save()
                 }
+                .disabled(overlapsExistingOvulation)
             }
         }
+    }
+
+    private var selectedEndDate: Date? {
+        multipleDays ? endDate : nil
+    }
+
+    private var overlapsExistingOvulation: Bool {
+        OvulationEntry.overlapsExisting(
+            startDate: startDate,
+            endDate: selectedEndDate,
+            in: entries,
+            excluding: entry
+        )
+    }
+
+    private func save() {
+        guard !overlapsExistingOvulation else { return }
+        entry.startDate = startDate
+        entry.endDate = selectedEndDate
+        entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        dismiss()
     }
 }
 

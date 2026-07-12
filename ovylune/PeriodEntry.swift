@@ -71,4 +71,23 @@ final class OvulationEntry {
         self.notes = notes
         self.createdAt = createdAt
     }
+
+    static func overlapsExisting(
+        startDate: Date,
+        endDate: Date?,
+        in entries: [OvulationEntry],
+        excluding excludedEntry: OvulationEntry? = nil,
+        calendar: Calendar = .current
+    ) -> Bool {
+        let candidateStart = calendar.startOfDay(for: startDate)
+        let candidateEnd = calendar.startOfDay(for: endDate ?? startDate)
+
+        return entries.contains { entry in
+            guard entry !== excludedEntry else { return false }
+
+            let existingStart = calendar.startOfDay(for: entry.startDate)
+            let existingEnd = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
+            return existingStart <= candidateEnd && candidateStart <= existingEnd
+        }
+    }
 }
