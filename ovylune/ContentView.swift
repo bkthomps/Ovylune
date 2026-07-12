@@ -422,14 +422,19 @@ private struct MonthPager: View {
         let endDate: Date?
     }
 
+    private struct MonthKey: Hashable {
+        let year: Int
+        let month: Int
+    }
+
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     let isOvulationTrackingEnabled: Bool
 
     @State private var selectedOffset = 0
     @State private var loadedCenterOffset = 0
-    @State private var measuredHeights: [Int: CGFloat] = [:]
-    @State private var cachedMonths: [Int: MonthData] = [:]
+    @State private var measuredHeights: [MonthKey: CGFloat] = [:]
+    @State private var cachedMonths: [MonthKey: MonthData] = [:]
 
     private let calendar = Calendar.current
 
@@ -440,9 +445,11 @@ private struct MonthPager: View {
     var body: some View {
         TabView(selection: $selectedOffset) {
             ForEach(monthOffsets, id: \.self) { offset in
-                let data = cachedMonths[offset] ?? makeMonthData(for: offset)
+                let displayedMonth = month(for: offset)
+                let key = monthKey(for: displayedMonth)
+                let data = cachedMonths[key] ?? makeMonthData(for: displayedMonth)
                 MonthCalendar(
-                    month: month(for: offset),
+                    month: displayedMonth,
                     periodDays: data.periodDays,
                     ovulationDays: isOvulationTrackingEnabled ? data.ovulationDays : [],
                     predictedPeriodDays: data.predictedPeriodDays,
@@ -455,8 +462,8 @@ private struct MonthPager: View {
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
                 } action: { height in
-                    guard height > 0, measuredHeights[offset] != height else { return }
-                    measuredHeights[offset] = height
+                    guard height > 0, measuredHeights[key] != height else { return }
+                    measuredHeights[key] = height
                 }
                 .tag(offset)
             }
@@ -479,7 +486,7 @@ private struct MonthPager: View {
     }
 
     private var pagerHeight: CGFloat {
-        measuredHeights[selectedOffset] ?? 340
+        measuredHeights[monthKey(for: month(for: selectedOffset))] ?? 340
     }
 
     private var entryVersion: EntryVersion {
@@ -491,8 +498,8 @@ private struct MonthPager: View {
         )
     }
 
-    private func makeMonthData(for offset: Int) -> MonthData {
-        let window = monthWindow(for: offset)
+    private func makeMonthData(for month: Date) -> MonthData {
+        let window = monthWindow(for: month)
         let ovulationPrediction = predictedOvulation(within: window)
         return MonthData(
             periodDays: periodDays(within: window),
@@ -504,12 +511,16 @@ private struct MonthPager: View {
     }
 
     private func synchronizeMonthCache() {
-        let loadedOffsets = Set(monthOffsets)
-        cachedMonths = cachedMonths.filter { loadedOffsets.contains($0.key) }
-        measuredHeights = measuredHeights.filter { loadedOffsets.contains($0.key) }
+        let loadedMonths = monthOffsets.map { month(for: $0) }
+        let loadedKeys = Set(loadedMonths.map(monthKey(for:)))
+        cachedMonths = cachedMonths.filter { loadedKeys.contains($0.key) }
+        measuredHeights = measuredHeights.filter { loadedKeys.contains($0.key) }
 
-        for offset in monthOffsets where cachedMonths[offset] == nil {
-            cachedMonths[offset] = makeMonthData(for: offset)
+        for month in loadedMonths {
+            let key = monthKey(for: month)
+            if cachedMonths[key] == nil {
+                cachedMonths[key] = makeMonthData(for: month)
+            }
         }
     }
 
@@ -659,9 +670,8 @@ private struct MonthPager: View {
         return (ovulationDays, fertileDays)
     }
 
-    private func monthWindow(for offset: Int) -> DateInterval {
-        let targetMonth = month(for: offset)
-        let start = calendar.dateInterval(of: .month, for: targetMonth)?.start ?? targetMonth
+    private func monthWindow(for month: Date) -> DateInterval {
+        let start = calendar.dateInterval(of: .month, for: month)?.start ?? month
         let end = calendar.date(byAdding: .month, value: 1, to: start) ?? start
         return DateInterval(start: start, end: end)
     }
@@ -710,6 +720,11 @@ private struct MonthPager: View {
         let today = calendar.startOfDay(for: Date())
         let currentMonth = calendar.dateInterval(of: .month, for: today)?.start ?? today
         return calendar.date(byAdding: .month, value: offset, to: currentMonth) ?? currentMonth
+    }
+
+    private func monthKey(for date: Date) -> MonthKey {
+        let components = calendar.dateComponents([.year, .month], from: date)
+        return MonthKey(year: components.year ?? 0, month: components.month ?? 0)
     }
 
     private func daysCovered(by entry: PeriodEntry, within window: DateInterval) -> [Date] {
