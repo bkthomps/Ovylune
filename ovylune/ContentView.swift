@@ -526,10 +526,15 @@ private struct MonthPager: View {
         var days: Set<Date> = []
 
         if var predictedStart = summary.nextPeriodStart {
+            let earliestOverlappingStart = calendar.date(
+                byAdding: .day,
+                value: -(periodLength - 1),
+                to: window.start
+            ) ?? window.start
             predictedStart = firstOccurrence(
                 startingOn: predictedStart,
                 interval: cycleLength,
-                onOrAfter: window.start
+                onOrAfter: earliestOverlappingStart
             )
 
             while predictedStart < window.end {
@@ -610,14 +615,27 @@ private struct MonthPager: View {
             calendar: calendar
         ) else { return (ovulationDays, fertileDays) }
 
+        let earliestRelevantOvulation = calendar.date(
+            byAdding: .day,
+            value: -CycleInsights.fertileDaysAfterOvulation,
+            to: window.start
+        ) ?? window.start
+        let latestRelevantOvulation = calendar.date(
+            byAdding: .day,
+            value: CycleInsights.fertileDaysBeforeOvulation,
+            to: window.end
+        ) ?? window.end
         ovulationDate = firstOccurrence(
             startingOn: ovulationDate,
             interval: predictionInterval,
-            onOrAfter: window.start
+            onOrAfter: earliestRelevantOvulation
         )
 
-        while ovulationDate < window.end {
-            ovulationDays.insert(calendar.startOfDay(for: ovulationDate))
+        while ovulationDate < latestRelevantOvulation {
+            let normalizedOvulationDate = calendar.startOfDay(for: ovulationDate)
+            if window.contains(normalizedOvulationDate) {
+                ovulationDays.insert(normalizedOvulationDate)
+            }
 
             for offset in -CycleInsights.fertileDaysBeforeOvulation...CycleInsights.fertileDaysAfterOvulation {
                 guard offset != 0 else { continue }
