@@ -236,6 +236,7 @@ private struct TrackView: View {
                 HistoryContent(entries: entries, ovulationEntries: ovulationEntries, deleteEntries: deleteEntries)
             }
         }
+        .listSectionSpacing(16)
     }
 
     private var selectedEndDate: Date? {
@@ -354,6 +355,7 @@ private struct OvulationTrackView: View {
                 OvulationHistoryContent(entries: entries, periodEntries: periodEntries, deleteEntries: deleteEntries)
             }
         }
+        .listSectionSpacing(16)
     }
 
     private var selectedEndDate: Date? {
@@ -1207,6 +1209,7 @@ private struct OvulationEntryDetailView: View {
                 }
             }
         }
+        .listSectionSpacing(16)
         .navigationTitle("Ovulation")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -1371,6 +1374,7 @@ private struct EntryDetailView: View {
                 }
             }
         }
+        .listSectionSpacing(16)
         .navigationTitle("Period")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -1466,6 +1470,7 @@ private struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .listSectionSpacing(16)
             .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
             .alert("Disable Ovulation Tracking?", isPresented: $isShowingDisableWarning) {
                 Button("Cancel", role: .cancel) {}
