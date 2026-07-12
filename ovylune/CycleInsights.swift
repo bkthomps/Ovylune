@@ -109,6 +109,107 @@ enum CycleInsights {
         )
     }
 
+    static func nextPeriodStart(
+        from periodEntries: [PeriodEntry],
+        ovulationEntries: [OvulationEntry],
+        calendar: Calendar = .current
+    ) -> Date? {
+        let summary = summary(for: periodEntries, calendar: calendar)
+        guard let lastPeriodStart = summary.lastPeriodStart else { return nil }
+
+        let normalizedLastPeriodStart = calendar.startOfDay(for: lastPeriodStart)
+        let latestOvulationEnd = preferredOvulationEntries(from: ovulationEntries, calendar: calendar).compactMap { entry -> Date? in
+            let start = calendar.startOfDay(for: entry.startDate)
+            guard start >= normalizedLastPeriodStart else { return nil }
+            return calendar.startOfDay(for: entry.endDate ?? entry.startDate)
+        }.max()
+
+        guard let latestOvulationEnd else { return summary.nextPeriodStart }
+        return calendar.date(
+            byAdding: .day,
+            value: averageLutealPhaseLength(
+                periodEntries: periodEntries,
+                ovulationEntries: ovulationEntries,
+                calendar: calendar
+            ) ?? fallbackLutealPhaseLength,
+            to: latestOvulationEnd
+        )
+    }
+
+    static func preferredOvulationEntries(
+        from entries: [OvulationEntry],
+        calendar: Calendar = .current
+    ) -> [OvulationEntry] {
+        Dictionary(grouping: entries) { entry in
+            let components = calendar.dateComponents([.year, .month], from: entry.startDate)
+            return "\(components.year ?? 0)-\(components.month ?? 0)"
+        }.values.compactMap { monthEntries in
+            monthEntries.max { $0.startDate < $1.startDate }
+        }
+    }
+
+    static func isSupersededOvulation(
+        _ entry: OvulationEntry,
+        in entries: [OvulationEntry],
+        calendar: Calendar = .current
+    ) -> Bool {
+        let month = calendar.dateComponents([.year, .month], from: entry.startDate)
+        return entries.contains { other in
+            other !== entry
+                && calendar.dateComponents([.year, .month], from: other.startDate) == month
+                && other.startDate > entry.startDate
+        }
+    }
+
+    static func averageLutealPhaseLength(
+        periodEntries: [PeriodEntry],
+        ovulationEntries: [OvulationEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Int? {
+        let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
+        let periodStarts = periodEntries
+            .map { calendar.startOfDay(for: $0.startDate) }
+            .filter { periodStart in
+                cutoff.map { periodStart <= $0 } ?? true
+            }
+            .sorted()
+        let eligibleOvulations = preferredOvulationEntries(from: ovulationEntries, calendar: calendar)
+            .filter { entry in
+                cutoff.map { calendar.startOfDay(for: entry.startDate) < $0 } ?? true
+            }
+        let lengths = eligibleOvulations.compactMap { entry -> Int? in
+            let ovulationEnd = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
+            guard let precedingPeriod = periodStarts.last(where: { $0 <= ovulationEnd }),
+                  let followingPeriod = periodStarts.first(where: { $0 > ovulationEnd }),
+                  precedingPeriod < ovulationEnd,
+                  let days = calendar.dateComponents([.day], from: ovulationEnd, to: followingPeriod).day,
+                  days > 0 else { return nil }
+            return days
+        }
+
+        guard !lengths.isEmpty else { return nil }
+        return Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded())
+    }
+
+    static func averageOvulationLength(
+        from entries: [OvulationEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Int? {
+        let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
+        let lengths = preferredOvulationEntries(from: entries, calendar: calendar).compactMap { entry -> Int? in
+            let start = calendar.startOfDay(for: entry.startDate)
+            guard cutoff.map({ start < $0 }) ?? true else { return nil }
+            let end = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
+            guard end >= start else { return nil }
+            return (calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1
+        }
+
+        guard !lengths.isEmpty else { return nil }
+        return max(Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded()), 1)
+    }
+
     static func estimatedPeriodEnd(
         startingOn startDate: Date,
         entries: [PeriodEntry],

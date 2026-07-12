@@ -537,7 +537,11 @@ private struct MonthPager: View {
         var days: Set<Date> = []
 
         if window.end > predictionWindowStart,
-           var predictedStart = summary.nextPeriodStart {
+           var predictedStart = CycleInsights.nextPeriodStart(
+               from: entries,
+               ovulationEntries: ovulationEntries,
+               calendar: calendar
+           ) {
             let earliestOverlappingStart = calendar.date(
                 byAdding: .day,
                 value: -(periodLength - 1),
@@ -592,79 +596,61 @@ private struct MonthPager: View {
         within window: DateInterval
     ) -> (ovulationDays: Set<Date>, fertileDays: Set<Date>) {
         let summary = CycleInsights.summary(for: entries, calendar: calendar)
-        let learnedInterval = CycleInsights.averageOvulationInterval(
+        let cycleLength = max(summary.averageCycleLength ?? CycleInsights.fallbackCycleLength, 1)
+        let preferredOvulations = CycleInsights.preferredOvulationEntries(
             from: ovulationEntries,
             calendar: calendar
         )
-        let predictionInterval = max(learnedInterval
-            ?? summary.averageCycleLength
-            ?? CycleInsights.fallbackCycleLength, 1)
 
         var ovulationDays: Set<Date> = []
         var fertileDays: Set<Date> = []
+        var cycleStarts = entries.map { calendar.startOfDay(for: $0.startDate) }.sorted()
+        guard let lastLoggedPeriod = cycleStarts.last else { return (ovulationDays, fertileDays) }
+        var nextPeriod = CycleInsights.nextPeriodStart(
+            from: entries,
+            ovulationEntries: ovulationEntries,
+            calendar: calendar
+        ) ?? calendar.date(byAdding: .day, value: cycleLength, to: lastLoggedPeriod)!
 
-        for entry in ovulationEntries {
-            let start = calendar.startOfDay(for: entry.startDate)
-            let end = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
-            ovulationDays.formUnion(days(from: start, through: end, within: window))
-
-            for offset in -CycleInsights.fertileDaysBeforeOvulation ..< 0 {
-                if let day = calendar.date(byAdding: .day, value: offset, to: start) {
-                    if window.contains(day) { fertileDays.insert(day) }
-                }
-            }
-
-            for offset in 1...CycleInsights.fertileDaysAfterOvulation {
-                if let day = calendar.date(byAdding: .day, value: offset, to: end) {
-                    if window.contains(day) { fertileDays.insert(day) }
-                }
-            }
+        while nextPeriod <= window.end.addingTimeInterval(TimeInterval(cycleLength * 86_400)) {
+            cycleStarts.append(nextPeriod)
+            guard let following = calendar.date(byAdding: .day, value: cycleLength, to: nextPeriod) else { break }
+            nextPeriod = following
         }
 
-        guard var ovulationDate = CycleInsights.nextOvulationDate(
-            from: ovulationEntries,
-            nextPeriodStart: summary.nextPeriodStart,
-            calendar: calendar
-        ) else { return (ovulationDays, fertileDays) }
-
-        guard window.end > predictionWindowStart else { return (ovulationDays, fertileDays) }
-
-        let earliestRelevantOvulation = calendar.date(
-            byAdding: .day,
-            value: -CycleInsights.fertileDaysAfterOvulation,
-            to: window.start
-        ) ?? window.start
-        let latestRelevantOvulation = calendar.date(
-            byAdding: .day,
-            value: CycleInsights.fertileDaysBeforeOvulation,
-            to: window.end
-        ) ?? window.end
-        ovulationDate = firstOccurrence(
-            startingOn: ovulationDate,
-            interval: predictionInterval,
-            onOrAfter: max(earliestRelevantOvulation, predictionWindowStart)
-        )
-
-        while ovulationDate < latestRelevantOvulation {
-            let normalizedOvulationDate = calendar.startOfDay(for: ovulationDate)
-            if window.contains(normalizedOvulationDate) {
-                ovulationDays.insert(normalizedOvulationDate)
-            }
-
-            for offset in -CycleInsights.fertileDaysBeforeOvulation...CycleInsights.fertileDaysAfterOvulation {
-                guard offset != 0 else { continue }
-                if let day = calendar.date(byAdding: .day, value: offset, to: ovulationDate),
-                   window.contains(day) {
-                    fertileDays.insert(calendar.startOfDay(for: day))
+        for (cycleStart, cycleEnd) in zip(cycleStarts, cycleStarts.dropFirst()) {
+            let lutealLength = CycleInsights.averageLutealPhaseLength(
+                periodEntries: entries,
+                ovulationEntries: ovulationEntries,
+                before: cycleStart,
+                calendar: calendar
+            ) ?? CycleInsights.fallbackLutealPhaseLength
+            let predictedOvulationLength = CycleInsights.averageOvulationLength(
+                from: ovulationEntries,
+                before: cycleStart,
+                calendar: calendar
+            ) ?? 1
+            let logged = preferredOvulations
+                .filter {
+                    let date = calendar.startOfDay(for: $0.startDate)
+                    return date >= cycleStart && date < cycleEnd
                 }
-            }
+                .max { $0.startDate < $1.startDate }
+            let predictedEnd = calendar.date(byAdding: .day, value: -lutealLength, to: cycleEnd)
+            guard let ovulationEnd = logged.map({ calendar.startOfDay(for: $0.endDate ?? $0.startDate) })
+                    ?? predictedEnd else { continue }
+            let ovulationStart = logged.map { calendar.startOfDay(for: $0.startDate) }
+                ?? calendar.date(byAdding: .day, value: -(predictedOvulationLength - 1), to: ovulationEnd)!
 
-            guard let followingDate = calendar.date(
-                byAdding: .day,
-                value: predictionInterval,
-                to: ovulationDate
-            ) else { break }
-            ovulationDate = followingDate
+            ovulationDays.formUnion(days(from: ovulationStart, through: ovulationEnd, within: window))
+            for offset in -CycleInsights.fertileDaysBeforeOvulation ..< 0 {
+                if let day = calendar.date(byAdding: .day, value: offset, to: ovulationStart),
+                   window.contains(day) { fertileDays.insert(calendar.startOfDay(for: day)) }
+            }
+            for offset in 1...CycleInsights.fertileDaysAfterOvulation {
+                if let day = calendar.date(byAdding: .day, value: offset, to: ovulationEnd),
+                   window.contains(day) { fertileDays.insert(calendar.startOfDay(for: day)) }
+            }
         }
 
         return (ovulationDays, fertileDays)
@@ -1091,7 +1077,10 @@ private struct OvulationHistoryContent: View {
                 NavigationLink {
                     OvulationEntryDetailView(entry: entry, entries: entries, periodEntries: periodEntries)
                 } label: {
-                    OvulationEntryRow(entry: entry)
+                    OvulationEntryRow(
+                        entry: entry,
+                        isSuperseded: CycleInsights.isSupersededOvulation(entry, in: entries)
+                    )
                 }
             }
             .onDelete(perform: deleteEntries)
@@ -1101,6 +1090,7 @@ private struct OvulationHistoryContent: View {
 
 private struct OvulationEntryRow: View {
     let entry: OvulationEntry
+    let isSuperseded: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1112,6 +1102,15 @@ private struct OvulationEntryRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+            }
+
+            if isSuperseded {
+                Label(
+                    "A later ovulation is logged this cycle; this entry is not used for predictions.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
             }
         }
         .padding(.vertical, 4)
