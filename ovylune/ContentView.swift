@@ -141,6 +141,7 @@ private struct MonthPager: View {
     let entries: [PeriodEntry]
 
     @State private var selectedOffset = 0
+    @State private var measuredHeights: [Int: CGFloat] = [:]
 
     private let calendar = Calendar.current
     private let monthOffsets = Array(-120...120)
@@ -152,6 +153,14 @@ private struct MonthPager: View {
                     month: month(for: offset),
                     periodDays: periodDays
                 )
+                .padding(.vertical, 16)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    guard height > 0, measuredHeights[offset] != height else { return }
+                    measuredHeights[offset] = height
+                }
                 .tag(offset)
             }
         }
@@ -162,9 +171,7 @@ private struct MonthPager: View {
     }
 
     private var pagerHeight: CGFloat {
-        let displayedMonth = month(for: selectedOffset)
-        let weekCount = calendar.range(of: .weekOfMonth, in: .month, for: displayedMonth)?.count ?? 6
-        return CGFloat(weekCount * 45 + 13)
+        measuredHeights[selectedOffset] ?? 340
     }
 
     private var periodDays: Set<Date> {
