@@ -629,9 +629,14 @@ private struct MonthPager: View {
     }
 
     private func predictedPeriodDays(within window: DateInterval) -> Set<Date> {
-        let summary = CycleInsights.summary(for: entries, calendar: calendar)
-        let periodLength = summary.averagePeriodLength ?? CycleInsights.fallbackPeriodLength
-        let cycleLength = max(summary.averageCycleLength ?? CycleInsights.fallbackCycleLength, 1)
+        let precisePeriodLength = CycleInsights.preciseAveragePeriodLength(from: entries, calendar: calendar)
+            ?? Double(CycleInsights.fallbackPeriodLength)
+        let periodLength = max(Int(precisePeriodLength.rounded()), 1)
+        let cycleLength = max(
+            CycleInsights.preciseAverageCycleLength(from: entries, calendar: calendar)
+                ?? Double(CycleInsights.fallbackCycleLength),
+            1
+        )
         var days: Set<Date> = []
 
         if var predictedStart = CycleInsights.nextPeriodStart(
@@ -644,8 +649,9 @@ private struct MonthPager: View {
                 value: -(periodLength - 1),
                 to: window.start
             ) ?? window.start
+            let predictionAnchor = predictedStart
             predictedStart = firstOccurrence(
-                startingOn: predictedStart,
+                startingOn: predictionAnchor,
                 interval: cycleLength,
                 onOrAfter: earliestOverlappingStart
             )
@@ -659,12 +665,12 @@ private struct MonthPager: View {
                     )
                 )
 
-                guard let followingStart = calendar.date(
-                    byAdding: .day,
-                    value: cycleLength,
-                    to: predictedStart
-                ) else { break }
-                predictedStart = followingStart
+                guard let dayAfterPrediction = calendar.date(byAdding: .day, value: 1, to: predictedStart) else { break }
+                predictedStart = firstOccurrence(
+                    startingOn: predictionAnchor,
+                    interval: cycleLength,
+                    onOrAfter: dayAfterPrediction
+                )
             }
         }
 
@@ -700,8 +706,11 @@ private struct MonthPager: View {
     private func predictedOvulation(
         within window: DateInterval
     ) -> (ovulationDays: Set<Date>, fertileDays: Set<Date>) {
-        let summary = CycleInsights.summary(for: entries, calendar: calendar)
-        let cycleLength = max(summary.averageCycleLength ?? CycleInsights.fallbackCycleLength, 1)
+        let cycleLength = max(
+            CycleInsights.preciseAverageCycleLength(from: entries, calendar: calendar)
+                ?? Double(CycleInsights.fallbackCycleLength),
+            1
+        )
         let preferredOvulations = CycleInsights.preferredOvulationEntries(
             from: ovulationEntries,
             calendar: calendar
@@ -715,37 +724,53 @@ private struct MonthPager: View {
             from: entries,
             ovulationEntries: ovulationEntries,
             calendar: calendar
-        ) ?? calendar.date(byAdding: .day, value: cycleLength, to: lastLoggedPeriod)!
+        ) ?? CycleInsights.nextPrediction(
+            startingOn: lastLoggedPeriod,
+            cycleLength: cycleLength,
+            onOrAfter: calendar.date(byAdding: .day, value: 1, to: lastLoggedPeriod)!,
+            calendar: calendar
+        )
 
-        while nextPeriod <= window.end.addingTimeInterval(TimeInterval(cycleLength * 86_400)) {
+        let predictionAnchor = nextPeriod
+
+        while nextPeriod <= window.end.addingTimeInterval(TimeInterval(cycleLength.rounded() * 86_400)) {
             cycleStarts.append(nextPeriod)
-            guard let following = calendar.date(byAdding: .day, value: cycleLength, to: nextPeriod) else { break }
-            nextPeriod = following
+            guard let followingDay = calendar.date(byAdding: .day, value: 1, to: nextPeriod) else { break }
+            nextPeriod = CycleInsights.nextPrediction(
+                startingOn: predictionAnchor,
+                cycleLength: cycleLength,
+                onOrAfter: followingDay,
+                calendar: calendar
+            )
         }
 
         for (cycleStart, cycleEnd) in zip(cycleStarts, cycleStarts.dropFirst()) {
-            let lutealLength = CycleInsights.averageLutealPhaseLength(
+            let lutealLength = CycleInsights.preciseAverageLutealPhaseLength(
                 periodEntries: entries,
                 ovulationEntries: ovulationEntries,
                 before: cycleStart,
                 calendar: calendar
-            ) ?? CycleInsights.fallbackLutealPhaseLength
-            let predictedOvulationLength = CycleInsights.averageOvulationLength(
+            ) ?? Double(CycleInsights.fallbackLutealPhaseLength)
+            let predictedOvulationLength = CycleInsights.preciseAverageOvulationLength(
                 from: ovulationEntries,
                 before: cycleStart,
                 calendar: calendar
-            ) ?? 1
+            ) ?? 1.0
             let logged = preferredOvulations
                 .filter {
                     let date = calendar.startOfDay(for: $0.startDate)
                     return date >= cycleStart && date < cycleEnd
                 }
                 .max { $0.startDate < $1.startDate }
-            let predictedEnd = calendar.date(byAdding: .day, value: -lutealLength, to: cycleEnd)
+            let predictedEnd = calendar.date(byAdding: .day, value: Int((-lutealLength).rounded()), to: cycleEnd)
             guard let ovulationEnd = logged.map({ calendar.startOfDay(for: $0.endDate ?? $0.startDate) })
                     ?? predictedEnd else { continue }
             let ovulationStart = logged.map { calendar.startOfDay(for: $0.startDate) }
-                ?? calendar.date(byAdding: .day, value: -(predictedOvulationLength - 1), to: ovulationEnd)!
+                ?? calendar.date(
+                    byAdding: .day,
+                    value: Int((1 - predictedOvulationLength).rounded()),
+                    to: ovulationEnd
+                )!
 
             ovulationDays.formUnion(days(from: ovulationStart, through: ovulationEnd, within: window))
             for offset in -CycleInsights.fertileDaysBeforeOvulation ..< 0 {
@@ -769,7 +794,7 @@ private struct MonthPager: View {
 
     private func firstOccurrence(
         startingOn startDate: Date,
-        interval: Int,
+        interval: Double,
         onOrAfter targetDate: Date
     ) -> Date {
         CycleInsights.nextPrediction(

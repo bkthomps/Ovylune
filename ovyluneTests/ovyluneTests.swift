@@ -126,6 +126,27 @@ struct ovyluneTests {
         )
     }
 
+    @Test func predictionRoundsOnlyAfterAccumulatingFractionalCycles() {
+        let start = date(2026, 1, 1)
+
+        #expect(
+            CycleInsights.nextPrediction(
+                startingOn: start,
+                cycleLength: 28.4,
+                onOrAfter: date(2026, 2, 1),
+                calendar: calendar
+            ) == date(2026, 2, 27)
+        )
+        #expect(
+            CycleInsights.nextPrediction(
+                startingOn: start,
+                cycleLength: 28.4,
+                onOrAfter: date(2026, 2, 28),
+                calendar: calendar
+            ) == date(2026, 3, 27)
+        )
+    }
+
     @Test func summaryUsesConfidenceBasedOnEachEstimatesDataPoints() {
         let entries = (0..<7).map { index in
             let start = date(2026, 1, 1 + (index * 28))
@@ -320,6 +341,14 @@ struct ovyluneTests {
                 before: date(2026, 1, 31),
                 calendar: calendar
             ) == 13
+        )
+        #expect(
+            CycleInsights.preciseAverageLutealPhaseLength(
+                periodEntries: periods,
+                ovulationEntries: ovulations,
+                before: date(2026, 1, 31),
+                calendar: calendar
+            ) == 13.0
         )
     }
 

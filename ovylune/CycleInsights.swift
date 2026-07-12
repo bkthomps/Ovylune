@@ -55,7 +55,11 @@ enum CycleInsights {
         let lastEntry = sorted.last
         let lastStart = lastEntry?.startDate
         let nextStart = lastStart.flatMap {
-            calendar.date(byAdding: .day, value: averageCycleLength ?? fallbackCycleLength, to: calendar.startOfDay(for: $0))
+            addingRoundedDays(
+                preciseAverageCycleLength(from: sorted, calendar: calendar) ?? Double(fallbackCycleLength),
+                to: calendar.startOfDay(for: $0),
+                calendar: calendar
+            )
         }
 
         return CycleSummary(
@@ -149,15 +153,19 @@ enum CycleInsights {
     }
 
     static func averageCycleLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Int? {
+        preciseAverageCycleLength(from: entries, calendar: calendar).map { Int($0.rounded()) }
+    }
+
+    static func preciseAverageCycleLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Double? {
         let sortedStarts = entries
             .map { calendar.startOfDay(for: $0.startDate) }
             .sorted()
 
         if sortedStarts.count == 1 {
-            guard let periodLength = averagePeriodLength(from: entries, calendar: calendar) else {
+            guard let periodLength = preciseAveragePeriodLength(from: entries, calendar: calendar) else {
                 return nil
             }
-            return periodLength + fallbackTimeBetweenPeriods
+            return periodLength + Double(fallbackTimeBetweenPeriods)
         }
 
         guard sortedStarts.count >= 2 else { return nil }
@@ -178,6 +186,10 @@ enum CycleInsights {
     }
 
     static func averagePeriodLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Int? {
+        preciseAveragePeriodLength(from: entries, calendar: calendar).map { Int($0.rounded()) }
+    }
+
+    static func preciseAveragePeriodLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Double? {
         let lengths = entries.compactMap { entry -> (value: Int, date: Date)? in
             guard let endDate = entry.endDate else { return nil }
             let start = calendar.startOfDay(for: entry.startDate)
@@ -198,7 +210,7 @@ enum CycleInsights {
         of observations: [(value: Int, date: Date)],
         halfLifeDays: Double,
         calendar: Calendar
-    ) -> Int? {
+    ) -> Double? {
         guard let newestDate = observations.map(\.date).max(), halfLifeDays > 0 else { return nil }
 
         let weighted = observations.reduce(into: (sum: 0.0, weight: 0.0)) { result, observation in
@@ -212,13 +224,20 @@ enum CycleInsights {
         }
 
         guard weighted.weight > 0 else { return nil }
-        return Int((weighted.sum / weighted.weight).rounded())
+        return weighted.sum / weighted.weight
     }
 
     static func averageOvulationInterval(
         from entries: [OvulationEntry],
         calendar: Calendar = .current
     ) -> Int? {
+        preciseAverageOvulationInterval(from: entries, calendar: calendar).map { Int($0.rounded()) }
+    }
+
+    static func preciseAverageOvulationInterval(
+        from entries: [OvulationEntry],
+        calendar: Calendar = .current
+    ) -> Double? {
         let sortedStarts = entries
             .map { calendar.startOfDay(for: $0.startDate) }
             .sorted()
@@ -230,7 +249,7 @@ enum CycleInsights {
         }
 
         guard !gaps.isEmpty else { return nil }
-        return Int((Double(gaps.reduce(0, +)) / Double(gaps.count)).rounded())
+        return Double(gaps.reduce(0, +)) / Double(gaps.count)
     }
 
     static func nextOvulationDate(
@@ -238,12 +257,12 @@ enum CycleInsights {
         nextPeriodStart: Date?,
         calendar: Calendar = .current
     ) -> Date? {
-        if let interval = averageOvulationInterval(from: ovulationEntries, calendar: calendar),
+        if let interval = preciseAverageOvulationInterval(from: ovulationEntries, calendar: calendar),
            let latest = ovulationEntries.map(\.startDate).max() {
-            return calendar.date(
-                byAdding: .day,
-                value: interval,
-                to: calendar.startOfDay(for: latest)
+            return addingRoundedDays(
+                interval,
+                to: calendar.startOfDay(for: latest),
+                calendar: calendar
             )
         }
 
@@ -271,14 +290,14 @@ enum CycleInsights {
         }.max()
 
         guard let latestOvulationEnd else { return summary.nextPeriodStart }
-        return calendar.date(
-            byAdding: .day,
-            value: averageLutealPhaseLength(
+        return addingRoundedDays(
+            preciseAverageLutealPhaseLength(
                 periodEntries: periodEntries,
                 ovulationEntries: ovulationEntries,
                 calendar: calendar
-            ) ?? fallbackLutealPhaseLength,
-            to: latestOvulationEnd
+            ) ?? Double(fallbackLutealPhaseLength),
+            to: latestOvulationEnd,
+            calendar: calendar
         )
     }
 
@@ -313,6 +332,20 @@ enum CycleInsights {
         before cutoffDate: Date? = nil,
         calendar: Calendar = .current
     ) -> Int? {
+        preciseAverageLutealPhaseLength(
+            periodEntries: periodEntries,
+            ovulationEntries: ovulationEntries,
+            before: cutoffDate,
+            calendar: calendar
+        ).map { Int($0.rounded()) }
+    }
+
+    static func preciseAverageLutealPhaseLength(
+        periodEntries: [PeriodEntry],
+        ovulationEntries: [OvulationEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Double? {
         let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
         let periodStarts = periodEntries
             .map { calendar.startOfDay(for: $0.startDate) }
@@ -335,7 +368,7 @@ enum CycleInsights {
         }
 
         guard !lengths.isEmpty else { return nil }
-        return Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded())
+        return Double(lengths.reduce(0, +)) / Double(lengths.count)
     }
 
     static func averageOvulationLength(
@@ -343,6 +376,15 @@ enum CycleInsights {
         before cutoffDate: Date? = nil,
         calendar: Calendar = .current
     ) -> Int? {
+        preciseAverageOvulationLength(from: entries, before: cutoffDate, calendar: calendar)
+            .map { max(Int($0.rounded()), 1) }
+    }
+
+    static func preciseAverageOvulationLength(
+        from entries: [OvulationEntry],
+        before cutoffDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> Double? {
         let cutoff = cutoffDate.map { calendar.startOfDay(for: $0) }
         let lengths = preferredOvulationEntries(from: entries, calendar: calendar).compactMap { entry -> Int? in
             let start = calendar.startOfDay(for: entry.startDate)
@@ -353,7 +395,7 @@ enum CycleInsights {
         }
 
         guard !lengths.isEmpty else { return nil }
-        return max(Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded()), 1)
+        return Double(lengths.reduce(0, +)) / Double(lengths.count)
     }
 
     static func estimatedPeriodEnd(
@@ -361,13 +403,27 @@ enum CycleInsights {
         entries: [PeriodEntry],
         calendar: Calendar = .current
     ) -> Date {
-        let periodLength = averagePeriodLength(from: entries, calendar: calendar) ?? fallbackPeriodLength
-        return calendar.date(byAdding: .day, value: periodLength - 1, to: startDate) ?? startDate
+        let periodLength = preciseAveragePeriodLength(from: entries, calendar: calendar) ?? Double(fallbackPeriodLength)
+        return addingRoundedDays(periodLength - 1, to: startDate, calendar: calendar) ?? startDate
     }
 
     static func nextPrediction(
         startingOn startDate: Date,
         cycleLength: Int,
+        onOrAfter targetDate: Date,
+        calendar: Calendar = .current
+    ) -> Date {
+        nextPrediction(
+            startingOn: startDate,
+            cycleLength: Double(cycleLength),
+            onOrAfter: targetDate,
+            calendar: calendar
+        )
+    }
+
+    static func nextPrediction(
+        startingOn startDate: Date,
+        cycleLength: Double,
         onOrAfter targetDate: Date,
         calendar: Calendar = .current
     ) -> Date {
@@ -380,15 +436,21 @@ enum CycleInsights {
             calendar.dateComponents([.day], from: start, to: target).day ?? 0,
             0
         )
-        var result = calendar.date(
-            byAdding: .day,
-            value: (elapsedDays / interval) * interval,
-            to: start
-        ) ?? start
+        var occurrence = max(Int(floor(Double(elapsedDays) / interval)), 0)
+        var result = addingRoundedDays(Double(occurrence) * interval, to: start, calendar: calendar) ?? start
 
         if result < target {
-            result = calendar.date(byAdding: .day, value: interval, to: result) ?? result
+            occurrence += 1
+            result = addingRoundedDays(Double(occurrence) * interval, to: start, calendar: calendar) ?? result
         }
         return result
+    }
+
+    private static func addingRoundedDays(
+        _ days: Double,
+        to date: Date,
+        calendar: Calendar
+    ) -> Date? {
+        calendar.date(byAdding: .day, value: Int(days.rounded()), to: date)
     }
 }
