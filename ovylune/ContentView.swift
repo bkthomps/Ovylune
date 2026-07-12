@@ -10,6 +10,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Query(sort: \PeriodEntry.startDate, order: .reverse) private var entries: [PeriodEntry]
+    @Query(sort: \OvulationEntry.startDate, order: .reverse) private var ovulationEntries: [OvulationEntry]
 
     private var ongoingPeriod: PeriodEntry? {
         entries.first { $0.endDate == nil }
@@ -22,7 +23,7 @@ struct ContentView: View {
                     Label("Calendar", systemImage: "calendar")
                 }
 
-            TrackView(entries: entries)
+            TrackView(entries: entries, ovulationEntries: ovulationEntries)
                 .tabItem {
                     Label("Track", systemImage: "plus.circle")
                 }
@@ -66,6 +67,9 @@ private struct CalendarView: View {
 private struct TrackView: View {
     @Environment(\.modelContext) private var modelContext
     let entries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
+
+    @State private var trackingMode = TrackingMode.period
 
     @State private var startDate = Date()
     @State private var endDate = Date()
@@ -75,46 +79,68 @@ private struct TrackView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Log a period") {
-                    DatePicker("Started", selection: $startDate, displayedComponents: .date)
-                        .onChange(of: startDate) { _, newValue in
-                            endDate = CycleInsights.estimatedPeriodEnd(
-                                startingOn: newValue,
-                                entries: entries
-                            )
-                        }
-
-                    Toggle("Ended", isOn: $hasEndDate.animation())
-
-                    if hasEndDate {
-                        DatePicker("Ended on", selection: $endDate, in: startDate..., displayedComponents: .date)
-                    }
-
-                    SymptomPicker(selection: $selectedSymptoms)
-
-                    TextField("Notes", text: $notes, axis: .vertical)
-                        .lineLimit(2...5)
-
-                    if overlapsExistingPeriod {
-                        Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    } else {
-                        Button {
-                            addEntry()
-                        } label: {
-                            Label("Save period", systemImage: "plus.circle.fill")
-                        }
-                        .disabled(!canSave)
-                    }
-                }
-
-                Section("History") {
-                    HistoryContent(entries: entries, deleteEntries: deleteEntries)
+            Group {
+                switch trackingMode {
+                case .period:
+                    periodContent
+                case .ovulation:
+                    OvulationTrackView(entries: ovulationEntries)
                 }
             }
             .ongoingPeriodEditor(entries: entries)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Picker("Tracking type", selection: $trackingMode) {
+                            ForEach(TrackingMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                    } label: {
+                        Label(trackingMode.rawValue, systemImage: "chevron.down")
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
+            }
+        }
+    }
+
+    private var periodContent: some View {
+        List {
+            Section {
+                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                    .onChange(of: startDate) { _, newValue in
+                        endDate = CycleInsights.estimatedPeriodEnd(startingOn: newValue, entries: entries)
+                    }
+
+                Toggle("Ended", isOn: $hasEndDate.animation())
+
+                if hasEndDate {
+                    DatePicker("Ended on", selection: $endDate, in: startDate..., displayedComponents: .date)
+                }
+
+                SymptomPicker(selection: $selectedSymptoms)
+
+                TextField("Notes", text: $notes, axis: .vertical)
+                    .lineLimit(2...5)
+
+                if overlapsExistingPeriod {
+                    Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                } else {
+                    Button {
+                        addEntry()
+                    } label: {
+                        Label("Save period", systemImage: "plus.circle.fill")
+                    }
+                    .disabled(!canSave)
+                }
+            }
+
+            Section {
+                HistoryContent(entries: entries, deleteEntries: deleteEntries)
+            }
         }
     }
 
@@ -149,6 +175,71 @@ private struct TrackView: View {
         endDate = Date()
         hasEndDate = true
         selectedSymptoms.removeAll()
+        notes = ""
+    }
+
+    private func deleteEntries(at offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(entries[index])
+        }
+    }
+}
+
+private enum TrackingMode: String, CaseIterable, Identifiable {
+    case period = "Period"
+    case ovulation = "Ovulation"
+
+    var id: Self { self }
+}
+
+private struct OvulationTrackView: View {
+    @Environment(\.modelContext) private var modelContext
+    let entries: [OvulationEntry]
+
+    @State private var startDate = Date()
+    @State private var endDate = Date()
+    @State private var multipleDays = false
+    @State private var notes = ""
+
+    var body: some View {
+        List {
+            Section {
+                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                    .onChange(of: startDate) { _, newValue in
+                        endDate = max(endDate, newValue)
+                    }
+
+                Toggle("Multiple Days", isOn: $multipleDays.animation())
+
+                if multipleDays {
+                    DatePicker("Ended", selection: $endDate, in: startDate..., displayedComponents: .date)
+                }
+
+                TextField("Notes", text: $notes, axis: .vertical)
+                    .lineLimit(2...5)
+
+                Button {
+                    addEntry()
+                } label: {
+                    Label("Save ovulation", systemImage: "plus.circle.fill")
+                }
+            }
+
+            Section {
+                OvulationHistoryContent(entries: entries, deleteEntries: deleteEntries)
+            }
+        }
+    }
+
+    private func addEntry() {
+        modelContext.insert(OvulationEntry(
+            startDate: startDate,
+            endDate: multipleDays ? endDate : nil,
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        ))
+        startDate = Date()
+        endDate = Date()
+        multipleDays = false
         notes = ""
     }
 
@@ -571,6 +662,106 @@ private struct HistoryContent: View {
     }
 }
 
+private struct OvulationHistoryContent: View {
+    let entries: [OvulationEntry]
+    let deleteEntries: (IndexSet) -> Void
+
+    var body: some View {
+        if entries.isEmpty {
+            ContentUnavailableView(
+                "No ovulations logged",
+                systemImage: "calendar.badge.plus",
+                description: Text("Saved ovulations will appear here.")
+            )
+        } else {
+            ForEach(entries) { entry in
+                NavigationLink {
+                    OvulationEntryDetailView(entry: entry)
+                } label: {
+                    OvulationEntryRow(entry: entry)
+                }
+            }
+            .onDelete(perform: deleteEntries)
+        }
+    }
+}
+
+private struct OvulationEntryRow: View {
+    let entry: OvulationEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(dateRange)
+                .font(.headline)
+
+            if !entry.notes.isEmpty {
+                Text(entry.notes)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var dateRange: String {
+        let start = entry.startDate.formatted(.dateTime.month(.abbreviated).day().year())
+        guard let endDate = entry.endDate else { return start }
+        let end = endDate.formatted(.dateTime.month(.abbreviated).day().year())
+        return "\(start) - \(end)"
+    }
+}
+
+private struct OvulationEntryDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var entry: OvulationEntry
+    @State private var startDate: Date
+    @State private var endDate: Date
+    @State private var multipleDays: Bool
+    @State private var notes: String
+
+    init(entry: OvulationEntry) {
+        self.entry = entry
+        _startDate = State(initialValue: entry.startDate)
+        _endDate = State(initialValue: entry.endDate ?? entry.startDate)
+        _multipleDays = State(initialValue: entry.endDate != nil)
+        _notes = State(initialValue: entry.notes)
+    }
+
+    var body: some View {
+        Form {
+            Section("Dates") {
+                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                    .onChange(of: startDate) { _, newValue in
+                        endDate = max(endDate, newValue)
+                    }
+
+                Toggle("Multiple Days", isOn: $multipleDays.animation())
+
+                if multipleDays {
+                    DatePicker("Ended", selection: $endDate, in: startDate..., displayedComponents: .date)
+                }
+            }
+
+            Section("Notes") {
+                TextField("Notes", text: $notes, axis: .vertical)
+                    .lineLimit(3...8)
+            }
+        }
+        .navigationTitle("Ovulation")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    entry.startDate = startDate
+                    entry.endDate = multipleDays ? endDate : nil
+                    entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
 private struct EntryRow: View {
     let entry: PeriodEntry
 
@@ -784,5 +975,5 @@ private struct OngoingPeriodEditorModifier: ViewModifier {
 
 #Preview {
     ContentView()
-        .modelContainer(for: PeriodEntry.self, inMemory: true)
+        .modelContainer(for: [PeriodEntry.self, OvulationEntry.self], inMemory: true)
 }

@@ -13,6 +13,7 @@ struct ovyluneApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             PeriodEntry.self,
+            OvulationEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

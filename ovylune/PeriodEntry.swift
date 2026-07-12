@@ -57,3 +57,18 @@ final class PeriodEntry {
         }
     }
 }
+
+@Model
+final class OvulationEntry {
+    var startDate: Date
+    var endDate: Date?
+    var notes: String
+    var createdAt: Date
+
+    init(startDate: Date, endDate: Date? = nil, notes: String = "", createdAt: Date = .now) {
+        self.startDate = startDate
+        self.endDate = endDate
+        self.notes = notes
+        self.createdAt = createdAt
+    }
+}
