@@ -22,6 +22,7 @@ private enum SelectableDates {
 }
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \PeriodEntry.startDate, order: .reverse) private var entries: [PeriodEntry]
     @Query(sort: \OvulationEntry.startDate, order: .reverse) private var ovulationEntries: [OvulationEntry]
     @Query(sort: \IntimacyEntry.date, order: .reverse) private var intimacyEntries: [IntimacyEntry]
@@ -52,6 +53,11 @@ struct ContentView: View {
                 }
         }
         .background(KeyboardDismissalView())
+#if DEBUG
+        .task {
+            TestDataSeeder.seedPeriodsIfNeeded(in: modelContext)
+        }
+#endif
     }
 }
 
@@ -127,7 +133,12 @@ private struct CalendarView: View {
                 }
 
                 Section {
-                    InsightGrid(summary: summary)
+                    InsightGrid(
+                        summary: summary,
+                        periodEntries: entries,
+                        ovulationEntries: ovulationEntries,
+                        isOvulationTrackingEnabled: isOvulationTrackingEnabled
+                    )
 
                     Text("Predictions are estimates for personal tracking only.")
                         .font(.footnote)
@@ -1118,6 +1129,9 @@ private struct DayCell: View {
 
 private struct InsightGrid: View {
     let summary: CycleSummary
+    let periodEntries: [PeriodEntry]
+    let ovulationEntries: [OvulationEntry]
+    let isOvulationTrackingEnabled: Bool
 
     var body: some View {
         Grid(horizontalSpacing: 12, verticalSpacing: 12) {
@@ -1148,6 +1162,24 @@ private struct InsightGrid: View {
                     detail: summary.nextPeriodStart == nil ? "Log a period" : "Estimate"
                 )
             }
+
+            if isOvulationTrackingEnabled {
+                GridRow {
+                    InsightTile(
+                        title: "Last Ovulation",
+                        value: lastOvulationRange,
+                        detail: ovulationEntries.isEmpty && lastPredictedOvulationStart != nil
+                            ? "Estimate"
+                            : ovulationEntries.isEmpty ? "Log a period" : "Logged locally"
+                    )
+
+                    InsightTile(
+                        title: "Next Ovulation",
+                        value: nextOvulationRange,
+                        detail: nextOvulationStart == nil ? "Log a period" : "Estimate"
+                    )
+                }
+            }
         }
         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
     }
@@ -1169,11 +1201,55 @@ private struct InsightGrid: View {
         return dateRange(from: start, to: end)
     }
 
+    private var lastOvulationRange: String {
+        if let entry = ovulationEntries.max(by: { $0.startDate < $1.startDate }) {
+            return dateRange(from: entry.startDate, to: entry.endDate ?? entry.startDate)
+        }
+
+        guard let start = lastPredictedOvulationStart else { return "None" }
+        return dateRange(from: start, to: start)
+    }
+
+    private var nextOvulationRange: String {
+        guard let start = nextOvulationStart else { return "None" }
+        return dateRange(from: start, to: start)
+    }
+
+    private var nextOvulationStart: Date? {
+        let calendar = Calendar.current
+        guard let initialPeriodStart = CycleInsights.nextPeriodStart(
+            from: periodEntries,
+            ovulationEntries: ovulationEntries,
+            calendar: calendar
+        ), let initialOvulation = CycleInsights.nextOvulationDate(
+            from: ovulationEntries,
+            nextPeriodStart: initialPeriodStart,
+            calendar: calendar
+        ) else { return nil }
+
+        return CycleInsights.nextPrediction(
+            startingOn: initialOvulation,
+            cycleLength: summary.averageCycleLength ?? CycleInsights.fallbackCycleLength,
+            onOrAfter: Date(),
+            calendar: calendar
+        )
+    }
+
+    private var lastPredictedOvulationStart: Date? {
+        guard let nextOvulationStart else { return nil }
+        let cycleLength = summary.averageCycleLength ?? CycleInsights.fallbackCycleLength
+        return Calendar.current.date(byAdding: .day, value: -cycleLength, to: nextOvulationStart)
+    }
+
     private func dateRange(from start: Date, to end: Date?) -> String {
         let formattedStart = start.formatted(.dateTime.month(.abbreviated).day())
 
         guard let end else {
             return "\(formattedStart) - ongoing"
+        }
+
+        if Calendar.current.isDate(start, inSameDayAs: end) {
+            return formattedStart
         }
 
         let formattedEnd = end.formatted(.dateTime.month(.abbreviated).day())
