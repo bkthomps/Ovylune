@@ -74,6 +74,17 @@ struct ovyluneTests {
         #expect(summary.nextPeriodStart == date(2026, 4, 7))
     }
 
+    @Test func summaryAdjustsCycleLengthForOneCompletedPeriod() {
+        let entries = [
+            PeriodEntry(startDate: date(2026, 3, 10), endDate: date(2026, 3, 17))
+        ]
+        let summary = CycleInsights.summary(for: entries, calendar: calendar)
+
+        #expect(summary.averagePeriodLength == 8)
+        #expect(summary.averageCycleLength == 31)
+        #expect(summary.nextPeriodStart == date(2026, 4, 10))
+    }
+
     @Test func estimatedPeriodEndUsesAveragePeriodLength() {
         let entries = [
             PeriodEntry(startDate: date(2026, 1, 1), endDate: date(2026, 1, 5)),

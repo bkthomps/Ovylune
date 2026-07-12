@@ -18,6 +18,7 @@ struct CycleSummary {
 enum CycleInsights {
     static let fallbackCycleLength = 28
     static let fallbackPeriodLength = 5
+    static let fallbackTimeBetweenPeriods = fallbackCycleLength - fallbackPeriodLength
     static let fallbackLutealPhaseLength = 14
     static let fertileDaysBeforeOvulation = 5
     static let fertileDaysAfterOvulation = 1
@@ -47,6 +48,13 @@ enum CycleInsights {
         let sortedStarts = entries
             .map { calendar.startOfDay(for: $0.startDate) }
             .sorted()
+
+        if sortedStarts.count == 1 {
+            guard let periodLength = averagePeriodLength(from: entries, calendar: calendar) else {
+                return nil
+            }
+            return periodLength + fallbackTimeBetweenPeriods
+        }
 
         guard sortedStarts.count >= 2 else { return nil }
 
