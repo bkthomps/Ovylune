@@ -108,3 +108,18 @@ final class OvulationEntry {
         }
     }
 }
+
+@Model
+final class IntimacyEntry {
+    var date: Date
+    var notes: String
+    var trackPregnancy: Bool = true
+    var createdAt: Date
+
+    init(date: Date, notes: String = "", trackPregnancy: Bool = true, createdAt: Date = .now) {
+        self.date = date
+        self.notes = notes
+        self.trackPregnancy = trackPregnancy
+        self.createdAt = createdAt
+    }
+}
