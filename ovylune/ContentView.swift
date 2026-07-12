@@ -101,6 +101,7 @@ private struct CalendarView: View {
     let ovulationEntries: [OvulationEntry]
     let intimacyEntries: [IntimacyEntry]
     @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
+    @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
     @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
 
     private var summary: CycleSummary {
@@ -116,6 +117,7 @@ private struct CalendarView: View {
                         ovulationEntries: ovulationEntries,
                         intimacyEntries: intimacyEntries,
                         isOvulationTrackingEnabled: isOvulationTrackingEnabled,
+                        isIntimacyTrackingEnabled: isIntimacyTrackingEnabled,
                         firstWeekday: firstWeekday
                     )
                 }
@@ -143,6 +145,7 @@ private struct TrackView: View {
 
     @State private var trackingMode = TrackingMode.period
     @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
+    @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
 
     @State private var startDate = Date()
     @State private var endDate = Date()
@@ -179,7 +182,12 @@ private struct TrackView: View {
                 }
             }
             .onChange(of: isOvulationTrackingEnabled) { _, isEnabled in
-                if !isEnabled {
+                if !isEnabled && trackingMode == .ovulation {
+                    trackingMode = .period
+                }
+            }
+            .onChange(of: isIntimacyTrackingEnabled) { _, isEnabled in
+                if !isEnabled && trackingMode == .intimacy {
                     trackingMode = .period
                 }
             }
@@ -187,7 +195,10 @@ private struct TrackView: View {
     }
 
     private var availableTrackingModes: [TrackingMode] {
-        TrackingMode.allCases.filter { isOvulationTrackingEnabled || $0 != .ovulation }
+        TrackingMode.allCases.filter { mode in
+            (isOvulationTrackingEnabled || mode != .ovulation)
+                && (isIntimacyTrackingEnabled || mode != .intimacy)
+        }
     }
 
     private var periodContent: some View {
@@ -501,6 +512,7 @@ private struct MonthPager: View {
     let ovulationEntries: [OvulationEntry]
     let intimacyEntries: [IntimacyEntry]
     let isOvulationTrackingEnabled: Bool
+    let isIntimacyTrackingEnabled: Bool
     let firstWeekday: Int
 
     @State private var selectedOffset = 0
@@ -524,11 +536,12 @@ private struct MonthPager: View {
                     month: displayedMonth,
                     periodDays: data.periodDays,
                     ovulationDays: isOvulationTrackingEnabled ? data.ovulationDays : [],
-                    intimacyDays: data.intimacyDays,
+                    intimacyDays: isIntimacyTrackingEnabled ? data.intimacyDays : [],
                     predictedPeriodDays: data.predictedPeriodDays,
                     predictedOvulationDays: isOvulationTrackingEnabled ? data.predictedOvulationDays : [],
                     predictedFertileDays: isOvulationTrackingEnabled ? data.predictedFertileDays : [],
                     isOvulationTrackingEnabled: isOvulationTrackingEnabled,
+                    isIntimacyTrackingEnabled: isIntimacyTrackingEnabled,
                     firstWeekday: firstWeekday
                 )
                 .padding(.vertical, 16)
@@ -814,6 +827,7 @@ private struct MonthCalendar: View {
     let predictedOvulationDays: Set<Date>
     let predictedFertileDays: Set<Date>
     let isOvulationTrackingEnabled: Bool
+    let isIntimacyTrackingEnabled: Bool
     let firstWeekday: Int
 
     private var calendar: Calendar {
@@ -856,7 +870,9 @@ private struct MonthCalendar: View {
                 if isOvulationTrackingEnabled {
                     legendItem(color: .purple, label: "Ovulation logged")
                 }
-                legendItem(color: .gray, label: "Intimacy logged")
+                if isIntimacyTrackingEnabled {
+                    legendItem(color: .gray, label: "Intimacy logged")
+                }
             }
             .padding(.leading, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1637,6 +1653,7 @@ private struct SettingsView: View {
     let ovulationEntries: [OvulationEntry]
     @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
     @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
+    @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
     @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
     @State private var newSymptom = ""
     @State private var isShowingDisableWarning = false
@@ -1645,13 +1662,14 @@ private struct SettingsView: View {
         NavigationStack {
             List {
                 Section {
-                    Toggle("Enable Ovulation Tracking", isOn: ovulationTrackingBinding)
-
                     Picker("Start Day of Week", selection: $firstWeekday) {
                         ForEach(WeekStart.values, id: \.self) { weekday in
                             Text(WeekStart.name(for: weekday)).tag(weekday)
                         }
                     }
+
+                    Toggle("Enable Ovulation Tracking", isOn: ovulationTrackingBinding)
+                    Toggle("Enable Intimacy Tracking", isOn: $isIntimacyTrackingEnabled)
                 }
 
                 Section("Symptoms") {
@@ -1744,6 +1762,10 @@ private struct SettingsView: View {
 
 private enum OvulationTracking {
     static let storageKey = "isOvulationTrackingEnabled"
+}
+
+private enum IntimacyTracking {
+    static let storageKey = "isIntimacyTrackingEnabled"
 }
 
 private enum WeekStart {
