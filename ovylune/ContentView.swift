@@ -102,11 +102,6 @@ private struct TrackView: View {
                 }
             }
             .navigationTitle("Track")
-            .toolbar {
-                if !entries.isEmpty {
-                    EditButton()
-                }
-            }
         }
     }
 
