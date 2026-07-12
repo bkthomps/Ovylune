@@ -14,6 +14,7 @@ struct ovyluneApp: App {
         let schema = Schema([
             PeriodEntry.self,
             OvulationEntry.self,
+            IntimacyEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
