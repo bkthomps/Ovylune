@@ -1171,18 +1171,14 @@ private struct PrivacyView: View {
         NavigationStack {
             List {
                 Section {
-                    Label("No account", systemImage: "person.crop.circle.badge.xmark")
-                    Label("No cloud sync", systemImage: "icloud.slash")
-                    Label("No analytics", systemImage: "chart.bar.xaxis")
+                    Label("No account required", systemImage: "person.crop.circle.badge.xmark")
+                    Label("No data is uploaded", systemImage: "icloud.slash")
+                    Label("No analytics collected", systemImage: "chart.bar.xaxis")
                     Label("No advertising trackers", systemImage: "hand.raised")
-                } header: {
-                    Text("Local only")
-                } footer: {
-                    Text("Ovylune stores your period history, symptoms, and notes on this device using local app storage.")
-                }
 
-                Section("Disclaimer") {
-                    Text("Cycle predictions are estimates for informational and personal tracking only. Ovylune is not a medical device and should not be used for diagnosis, treatment, contraception, or other medical decisions.")
+                    Text("Not a medical device. Do not use for diagnosis, treatment, contraception, or other medical decisions.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
