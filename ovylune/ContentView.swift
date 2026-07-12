@@ -1391,6 +1391,15 @@ private struct OvulationEntryRow: View {
                     .lineLimit(2)
             }
 
+            if entry.endDate != nil {
+                Label(
+                    "The last day is used for cycle calculations, following the standard model.",
+                    systemImage: "info.circle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+
             if isSuperseded {
                 Label(
                     "A later ovulation is logged this cycle; this entry is not used for predictions.",

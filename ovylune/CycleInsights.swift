@@ -299,7 +299,7 @@ enum CycleInsights {
             .sorted()
         let observations = preferredOvulationEntries(from: ovulationEntries, calendar: calendar)
             .compactMap { entry -> (value: Int, date: Date)? in
-                let ovulationDate = calendar.startOfDay(for: entry.startDate)
+                let ovulationDate = calendar.startOfDay(for: entry.endDate ?? entry.startDate)
                 guard cutoff.map({ ovulationDate < $0 }) ?? true,
                       let periodStart = periodStarts.last(where: { $0 <= ovulationDate }),
                       let interval = calendar.dateComponents([.day], from: periodStart, to: ovulationDate).day,
