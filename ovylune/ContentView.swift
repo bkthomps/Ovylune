@@ -7,6 +7,7 @@
 
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @Query(sort: \PeriodEntry.startDate, order: .reverse) private var entries: [PeriodEntry]
@@ -33,6 +34,52 @@ struct ContentView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
         }
+        .background(KeyboardDismissalView())
+    }
+}
+
+private struct KeyboardDismissalView: UIViewRepresentable {
+    func makeUIView(context: Context) -> KeyboardDismissalUIView {
+        KeyboardDismissalUIView()
+    }
+
+    func updateUIView(_ uiView: KeyboardDismissalUIView, context: Context) {}
+}
+
+private final class KeyboardDismissalUIView: UIView, UIGestureRecognizerDelegate {
+    private lazy var dismissalRecognizer = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+    private weak var installedWindow: UIWindow?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+
+        installedWindow?.removeGestureRecognizer(dismissalRecognizer)
+        installedWindow = window
+
+        dismissalRecognizer.cancelsTouchesInView = false
+        dismissalRecognizer.delegate = self
+        window?.addGestureRecognizer(dismissalRecognizer)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var touchedView = touch.view
+
+        while let view = touchedView {
+            if view is UITextField || view is UITextView {
+                return false
+            }
+            touchedView = view.superview
+        }
+
+        return true
+    }
+
+    @objc private func dismissKeyboard() {
+        installedWindow?.endEditing(true)
+    }
+
+    deinit {
+        installedWindow?.removeGestureRecognizer(dismissalRecognizer)
     }
 }
 
