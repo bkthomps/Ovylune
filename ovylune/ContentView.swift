@@ -99,6 +99,7 @@ private struct CalendarView: View {
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
+    @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
 
     private var summary: CycleSummary {
         CycleInsights.summary(for: entries)
@@ -111,7 +112,8 @@ private struct CalendarView: View {
                     MonthPager(
                         entries: entries,
                         ovulationEntries: ovulationEntries,
-                        isOvulationTrackingEnabled: isOvulationTrackingEnabled
+                        isOvulationTrackingEnabled: isOvulationTrackingEnabled,
+                        firstWeekday: firstWeekday
                     )
                 }
 
@@ -430,6 +432,7 @@ private struct MonthPager: View {
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     let isOvulationTrackingEnabled: Bool
+    let firstWeekday: Int
 
     @State private var selectedOffset = 0
     @State private var loadedCenterOffset = 0
@@ -455,7 +458,8 @@ private struct MonthPager: View {
                     predictedPeriodDays: data.predictedPeriodDays,
                     predictedOvulationDays: isOvulationTrackingEnabled ? data.predictedOvulationDays : [],
                     predictedFertileDays: isOvulationTrackingEnabled ? data.predictedFertileDays : [],
-                    isOvulationTrackingEnabled: isOvulationTrackingEnabled
+                    isOvulationTrackingEnabled: isOvulationTrackingEnabled,
+                    firstWeekday: firstWeekday
                 )
                 .padding(.vertical, 16)
                 .fixedSize(horizontal: false, vertical: true)
@@ -742,8 +746,13 @@ private struct MonthCalendar: View {
     let predictedOvulationDays: Set<Date>
     let predictedFertileDays: Set<Date>
     let isOvulationTrackingEnabled: Bool
+    let firstWeekday: Int
 
-    private let calendar = Calendar.current
+    private var calendar: Calendar {
+        var calendar = Calendar.current
+        calendar.firstWeekday = firstWeekday
+        return calendar
+    }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
 
     var body: some View {
@@ -1414,6 +1423,7 @@ private struct SettingsView: View {
     let ovulationEntries: [OvulationEntry]
     @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
     @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
+    @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
     @State private var newSymptom = ""
     @State private var isShowingDisableWarning = false
 
@@ -1422,6 +1432,12 @@ private struct SettingsView: View {
             List {
                 Section {
                     Toggle("Enable Ovulation Tracking", isOn: ovulationTrackingBinding)
+
+                    Picker("Start Day of Week", selection: $firstWeekday) {
+                        ForEach(WeekStart.values, id: \.self) { weekday in
+                            Text(WeekStart.name(for: weekday)).tag(weekday)
+                        }
+                    }
                 }
 
                 Section("Symptoms") {
@@ -1513,6 +1529,16 @@ private struct SettingsView: View {
 
 private enum OvulationTracking {
     static let storageKey = "isOvulationTrackingEnabled"
+}
+
+private enum WeekStart {
+    static let storageKey = "firstWeekday"
+    static let defaultValue = 1
+    static let values = Array(1...7)
+
+    static func name(for weekday: Int, calendar: Calendar = .current) -> String {
+        calendar.weekdaySymbols[weekday - 1]
+    }
 }
 
 private enum SymptomCatalog {
