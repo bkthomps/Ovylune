@@ -10,9 +10,29 @@ import Foundation
 struct CycleSummary {
     let averageCycleLength: Int?
     let averagePeriodLength: Int?
+    let cycleConfidence: EstimateConfidence
+    let periodConfidence: EstimateConfidence
+    let isCycleIrregular: Bool
+    let isPeriodLengthIrregular: Bool
     let nextPeriodStart: Date?
     let lastPeriodStart: Date?
     let lastPeriodEnd: Date?
+}
+
+enum EstimateConfidence: Equatable {
+    case defaultEstimate
+    case low
+    case medium
+    case high
+
+    var label: String {
+        switch self {
+        case .defaultEstimate: "Default estimate"
+        case .low: "Low Confidence"
+        case .medium: "Medium Confidence"
+        case .high: "High Confidence"
+        }
+    }
 }
 
 enum CycleInsights {
@@ -29,6 +49,9 @@ enum CycleInsights {
         let sorted = entries.sorted { $0.startDate < $1.startDate }
         let averageCycleLength = averageCycleLength(from: sorted, calendar: calendar)
         let averagePeriodLength = averagePeriodLength(from: sorted, calendar: calendar)
+        let allCycleDataPoints = cycleDataPoints(from: sorted, calendar: calendar)
+        let allPeriodDataPoints = periodDataPoints(from: sorted, calendar: calendar)
+        let recentEntries = entriesFromLatestYear(sorted, calendar: calendar)
         let lastEntry = sorted.last
         let lastStart = lastEntry?.startDate
         let nextStart = lastStart.flatMap {
@@ -38,10 +61,91 @@ enum CycleInsights {
         return CycleSummary(
             averageCycleLength: averageCycleLength,
             averagePeriodLength: averagePeriodLength,
+            cycleConfidence: confidence(for: averageCycleLength, dataPoints: allCycleDataPoints, mediumVariation: 2, lowVariation: 5),
+            periodConfidence: confidence(for: averagePeriodLength, dataPoints: allPeriodDataPoints, mediumVariation: 1, lowVariation: 2),
+            isCycleIrregular: isIrregular(
+                cycleDataPoints(from: recentEntries, calendar: calendar),
+                maximumRegularRange: 9
+            ),
+            isPeriodLengthIrregular: isIrregular(
+                periodDataPoints(from: recentEntries, calendar: calendar),
+                maximumRegularRange: 3
+            ),
             nextPeriodStart: nextStart,
             lastPeriodStart: lastStart,
             lastPeriodEnd: lastEntry?.endDate
         )
+    }
+
+    static func isIrregular(_ dataPoints: [Int], maximumRegularRange: Int) -> Bool {
+        guard dataPoints.count >= 3,
+              let shortest = dataPoints.min(),
+              let longest = dataPoints.max() else {
+            return false
+        }
+        return longest - shortest > maximumRegularRange
+    }
+
+    private static func entriesFromLatestYear(
+        _ entries: [PeriodEntry],
+        calendar: Calendar
+    ) -> [PeriodEntry] {
+        guard let latestStart = entries.map(\.startDate).max(),
+              let cutoff = calendar.date(byAdding: .year, value: -1, to: latestStart) else {
+            return []
+        }
+        return entries.filter { $0.startDate >= cutoff }
+    }
+
+    static func confidence(
+        for estimate: Int?,
+        dataPoints: [Int],
+        mediumVariation: Double,
+        lowVariation: Double
+    ) -> EstimateConfidence {
+        guard estimate != nil, !dataPoints.isEmpty else { return .defaultEstimate }
+
+        let countLevel: Int
+        switch dataPoints.count {
+        case 1...2: countLevel = 1
+        case 3...5: countLevel = 2
+        default: countLevel = 3
+        }
+
+        let mean = Double(dataPoints.reduce(0, +)) / Double(dataPoints.count)
+        let variance = dataPoints.reduce(0.0) { result, value in
+            result + pow(Double(value) - mean, 2)
+        } / Double(dataPoints.count)
+        let variation = sqrt(variance)
+        let regularityLevel = variation <= mediumVariation ? 3 : (variation <= lowVariation ? 2 : 1)
+
+        switch min(countLevel, regularityLevel) {
+        case 1: return .low
+        case 2: return .medium
+        default: return .high
+        }
+    }
+
+    private static func cycleDataPoints(from entries: [PeriodEntry], calendar: Calendar) -> [Int] {
+        if entries.count == 1 {
+            guard let periodLength = periodDataPoints(from: entries, calendar: calendar).first else { return [] }
+            return [periodLength + fallbackTimeBetweenPeriods]
+        }
+
+        let starts = entries.map { calendar.startOfDay(for: $0.startDate) }.sorted()
+        return zip(starts, starts.dropFirst()).compactMap { previous, current in
+            calendar.dateComponents([.day], from: previous, to: current).day
+        }
+    }
+
+    private static func periodDataPoints(from entries: [PeriodEntry], calendar: Calendar) -> [Int] {
+        entries.compactMap { entry in
+            guard let endDate = entry.endDate else { return nil }
+            let start = calendar.startOfDay(for: entry.startDate)
+            let end = calendar.startOfDay(for: endDate)
+            guard end >= start else { return nil }
+            return (calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1
+        }
     }
 
     static func averageCycleLength(from entries: [PeriodEntry], calendar: Calendar = .current) -> Int? {

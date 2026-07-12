@@ -83,6 +83,64 @@ struct ovyluneTests {
         #expect(summary.averagePeriodLength == 8)
         #expect(summary.averageCycleLength == 31)
         #expect(summary.nextPeriodStart == date(2026, 4, 10))
+        #expect(summary.cycleConfidence == .low)
+        #expect(summary.periodConfidence == .low)
+    }
+
+    @Test func summaryUsesConfidenceBasedOnEachEstimatesDataPoints() {
+        let entries = (0..<7).map { index in
+            let start = date(2026, 1, 1 + (index * 28))
+            return PeriodEntry(
+                startDate: start,
+                endDate: index < 4 ? calendar.date(byAdding: .day, value: 4, to: start) : nil
+            )
+        }
+
+        let summary = CycleInsights.summary(for: entries, calendar: calendar)
+
+        #expect(summary.cycleConfidence == .high)
+        #expect(summary.periodConfidence == .medium)
+    }
+
+    @Test func summaryUsesDefaultConfidenceWithoutUsableData() {
+        let summary = CycleInsights.summary(for: [], calendar: calendar)
+
+        #expect(summary.cycleConfidence == .defaultEstimate)
+        #expect(summary.periodConfidence == .defaultEstimate)
+    }
+
+    @Test func irregularCyclesReduceConfidenceDespiteHavingManyDataPoints() {
+        let offsets = [0, 20, 55, 77, 120, 146, 190]
+        let entries = offsets.map { offset in
+            PeriodEntry(startDate: calendar.date(byAdding: .day, value: offset, to: date(2026, 1, 1))!)
+        }
+
+        let summary = CycleInsights.summary(for: entries, calendar: calendar)
+
+        #expect(summary.cycleConfidence == .low)
+        #expect(summary.isCycleIrregular)
+    }
+
+    @Test func irregularPeriodLengthsReduceConfidenceDespiteHavingManyDataPoints() {
+        let lengths = [3, 9, 4, 8, 2, 10]
+        let entries = lengths.enumerated().map { index, length in
+            let start = calendar.date(byAdding: .day, value: index * 28, to: date(2026, 1, 1))!
+            return PeriodEntry(
+                startDate: start,
+                endDate: calendar.date(byAdding: .day, value: length - 1, to: start)
+            )
+        }
+
+        let summary = CycleInsights.summary(for: entries, calendar: calendar)
+
+        #expect(summary.periodConfidence == .low)
+        #expect(summary.isPeriodLengthIrregular)
+    }
+
+    @Test func irregularityRequiresThreeRecentDataPoints() {
+        #expect(!CycleInsights.isIrregular([20, 40], maximumRegularRange: 9))
+        #expect(!CycleInsights.isIrregular([27, 28, 36], maximumRegularRange: 9))
+        #expect(CycleInsights.isIrregular([27, 28, 37], maximumRegularRange: 9))
     }
 
     @Test func estimatedPeriodEndUsesAveragePeriodLength() {

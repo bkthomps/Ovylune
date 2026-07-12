@@ -949,13 +949,13 @@ private struct InsightGrid: View {
                 InsightTile(
                     title: "Cycle",
                     value: summary.averageCycleLength.map { "\($0) days" } ?? "28 days",
-                    detail: summary.averageCycleLength == nil ? "Default estimate" : "Average"
+                    detail: summary.isCycleIrregular ? "⚠️ Irregular" : summary.cycleConfidence.label
                 )
 
                 InsightTile(
                     title: "Period",
                     value: summary.averagePeriodLength.map { "\($0) days" } ?? "5 days",
-                    detail: summary.averagePeriodLength == nil ? "Default estimate" : "Average"
+                    detail: summary.isPeriodLengthIrregular ? "⚠️ Irregular" : summary.periodConfidence.label
                 )
             }
 
