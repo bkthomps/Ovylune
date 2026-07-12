@@ -87,6 +87,40 @@ struct ovyluneTests {
         #expect(summary.periodConfidence == .low)
     }
 
+    @Test func advancesPastPredictionToNextUpcomingCycle() {
+        let entries = [
+            PeriodEntry(startDate: date(2026, 1, 1), endDate: date(2026, 1, 31))
+        ]
+        let summary = CycleInsights.summary(for: entries, calendar: calendar)
+
+        #expect(summary.averageCycleLength == 54)
+        #expect(summary.nextPeriodStart == date(2026, 2, 24))
+        #expect(
+            CycleInsights.nextPrediction(
+                startingOn: summary.nextPeriodStart!,
+                cycleLength: summary.averageCycleLength!,
+                onOrAfter: date(2026, 4, 1),
+                calendar: calendar
+            ) == date(2026, 4, 19)
+        )
+        #expect(
+            CycleInsights.nextPrediction(
+                startingOn: summary.nextPeriodStart!,
+                cycleLength: summary.averageCycleLength!,
+                onOrAfter: date(2026, 6, 1),
+                calendar: calendar
+            ) == date(2026, 6, 12)
+        )
+        #expect(
+            CycleInsights.nextPrediction(
+                startingOn: summary.nextPeriodStart!,
+                cycleLength: summary.averageCycleLength!,
+                onOrAfter: date(2026, 7, 12),
+                calendar: calendar
+            ) == date(2026, 8, 5)
+        )
+    }
+
     @Test func summaryUsesConfidenceBasedOnEachEstimatesDataPoints() {
         let entries = (0..<7).map { index in
             let start = date(2026, 1, 1 + (index * 28))

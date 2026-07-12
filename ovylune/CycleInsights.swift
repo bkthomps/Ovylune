@@ -364,4 +364,31 @@ enum CycleInsights {
         let periodLength = averagePeriodLength(from: entries, calendar: calendar) ?? fallbackPeriodLength
         return calendar.date(byAdding: .day, value: periodLength - 1, to: startDate) ?? startDate
     }
+
+    static func nextPrediction(
+        startingOn startDate: Date,
+        cycleLength: Int,
+        onOrAfter targetDate: Date,
+        calendar: Calendar = .current
+    ) -> Date {
+        let start = calendar.startOfDay(for: startDate)
+        let target = calendar.startOfDay(for: targetDate)
+        let interval = max(cycleLength, 1)
+        guard start < target else { return start }
+
+        let elapsedDays = max(
+            calendar.dateComponents([.day], from: start, to: target).day ?? 0,
+            0
+        )
+        var result = calendar.date(
+            byAdding: .day,
+            value: (elapsedDays / interval) * interval,
+            to: start
+        ) ?? start
+
+        if result < target {
+            result = calendar.date(byAdding: .day, value: interval, to: result) ?? result
+        }
+        return result
+    }
 }

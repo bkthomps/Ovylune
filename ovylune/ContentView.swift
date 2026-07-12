@@ -543,8 +543,7 @@ private struct MonthPager: View {
         let cycleLength = max(summary.averageCycleLength ?? CycleInsights.fallbackCycleLength, 1)
         var days: Set<Date> = []
 
-        if window.end > predictionWindowStart,
-           var predictedStart = CycleInsights.nextPeriodStart(
+        if var predictedStart = CycleInsights.nextPeriodStart(
                from: entries,
                ovulationEntries: ovulationEntries,
                calendar: calendar
@@ -557,7 +556,7 @@ private struct MonthPager: View {
             predictedStart = firstOccurrence(
                 startingOn: predictedStart,
                 interval: cycleLength,
-                onOrAfter: max(earliestOverlappingStart, predictionWindowStart)
+                onOrAfter: earliestOverlappingStart
             )
 
             while predictedStart < window.end {
@@ -669,31 +668,17 @@ private struct MonthPager: View {
         return DateInterval(start: start, end: end)
     }
 
-    private var predictionWindowStart: Date {
-        let currentMonth = month(for: 0)
-        return calendar.dateInterval(of: .month, for: currentMonth)?.start ?? currentMonth
-    }
-
     private func firstOccurrence(
         startingOn startDate: Date,
         interval: Int,
         onOrAfter targetDate: Date
     ) -> Date {
-        let start = calendar.startOfDay(for: startDate)
-        guard start < targetDate else { return start }
-
-        let elapsedDays = max(calendar.dateComponents([.day], from: start, to: targetDate).day ?? 0, 0)
-        let intervalsToSkip = elapsedDays / interval
-        var result = calendar.date(
-            byAdding: .day,
-            value: intervalsToSkip * interval,
-            to: start
-        ) ?? start
-
-        if result < targetDate {
-            result = calendar.date(byAdding: .day, value: interval, to: result) ?? result
-        }
-        return result
+        CycleInsights.nextPrediction(
+            startingOn: startDate,
+            cycleLength: interval,
+            onOrAfter: targetDate,
+            calendar: calendar
+        )
     }
 
     private func predictedDays(
@@ -984,7 +969,12 @@ private struct InsightGrid: View {
     }
 
     private var nextPeriodRange: String {
-        guard let start = summary.nextPeriodStart else { return "None" }
+        guard let initialStart = summary.nextPeriodStart else { return "None" }
+        let start = CycleInsights.nextPrediction(
+            startingOn: initialStart,
+            cycleLength: summary.averageCycleLength ?? CycleInsights.fallbackCycleLength,
+            onOrAfter: Date()
+        )
         let periodLength = summary.averagePeriodLength ?? CycleInsights.fallbackPeriodLength
         let end = Calendar.current.date(byAdding: .day, value: periodLength - 1, to: start)
         return dateRange(from: start, to: end)
