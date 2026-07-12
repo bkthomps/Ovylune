@@ -470,7 +470,6 @@ private struct MonthPager: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: pagerHeight)
-        .animation(.easeInOut(duration: 0.2), value: selectedOffset)
         .onAppear {
             synchronizeMonthCache()
         }
@@ -486,7 +485,9 @@ private struct MonthPager: View {
     }
 
     private var pagerHeight: CGFloat {
-        measuredHeights[monthKey(for: month(for: selectedOffset))] ?? 340
+        // All month grids reserve six rows, so keep the pager at one shared
+        // measured height while its selection changes during an interactive swipe.
+        measuredHeights.values.max() ?? 340
     }
 
     private var entryVersion: EntryVersion {
@@ -808,7 +809,7 @@ private struct MonthCalendar: View {
 
         let dayCount = calendar.dateComponents([.day], from: firstWeek.start, to: lastWeek.end).day ?? 0
 
-        return (0..<dayCount).compactMap { offset in
+        var days = (0..<dayCount).compactMap { offset -> CalendarDay? in
             guard let date = calendar.date(byAdding: .day, value: offset, to: firstWeek.start) else {
                 return nil
             }
@@ -816,6 +817,14 @@ private struct MonthCalendar: View {
             let isCurrentMonth = calendar.isDate(date, equalTo: month, toGranularity: .month)
             return CalendarDay(date: isCurrentMonth ? date : nil, placeholderIndex: offset)
         }
+
+        // Reserve six week rows for every month so shorter months leave their
+        // unused space between the final week and the legend.
+        days.append(contentsOf: (days.count..<42).map {
+            CalendarDay(date: nil, placeholderIndex: $0)
+        })
+
+        return days
     }
 }
 
@@ -852,6 +861,12 @@ private struct DayCell: View {
 
     var body: some View {
         ZStack {
+            // Give highlighted and unhighlighted dates the same square layout
+            // footprint. The decoration can then fill the cell without changing
+            // the grid row's height.
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+
             if isPeriodDay {
                 Circle()
                     .fill(.pink.opacity(0.18))
@@ -893,7 +908,6 @@ private struct DayCell: View {
                     .padding(.bottom, 5)
             }
         }
-        .aspectRatio(1, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .opacity(day.date == nil ? 0 : 1)
         .accessibilityLabel(accessibilityLabel)
