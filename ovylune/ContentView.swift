@@ -504,6 +504,10 @@ private struct EntryRow: View {
             Text(dateRange)
                 .font(.headline)
 
+            Text(durationText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
             if !entry.symptoms.isEmpty {
                 Text(entry.symptoms.joined(separator: ", "))
                     .font(.subheadline)
@@ -529,6 +533,16 @@ private struct EntryRow: View {
 
         let end = endDate.formatted(.dateTime.month(.abbreviated).day().year())
         return "\(start) - \(end)"
+    }
+
+    private var durationText: String {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: entry.startDate)
+        let end = calendar.startOfDay(for: entry.endDate ?? Date())
+        let days = max((calendar.dateComponents([.day], from: start, to: end).day ?? 0) + 1, 1)
+        let unit = days == 1 ? "day" : "days"
+
+        return entry.endDate == nil ? "\(days) \(unit) so far" : "\(days) \(unit)"
     }
 }
 
