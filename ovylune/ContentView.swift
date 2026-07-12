@@ -27,7 +27,7 @@ struct ContentView: View {
                     Label("Track", systemImage: "plus.circle")
                 }
 
-            PrivacyView(ongoingPeriod: ongoingPeriod)
+            PrivacyView(entries: entries)
                 .tabItem {
                     Label("Privacy", systemImage: "lock.shield")
                 }
@@ -59,7 +59,7 @@ private struct CalendarView: View {
             }
             .listSectionSpacing(16)
             .navigationTitle("Calendar")
-            .ongoingPeriodEditor(entry: entries.first { $0.endDate == nil })
+            .ongoingPeriodEditor(entries: entries)
         }
     }
 }
@@ -94,12 +94,18 @@ private struct TrackView: View {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(2...5)
 
-                    Button {
-                        addEntry()
-                    } label: {
-                        Label("Save period", systemImage: "plus.circle.fill")
+                    if overlapsExistingPeriod {
+                        Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    } else {
+                        Button {
+                            addEntry()
+                        } label: {
+                            Label("Save period", systemImage: "plus.circle.fill")
+                        }
+                        .disabled(!canSave)
                     }
-                    .disabled(hasEndDate && endDate < startDate)
                 }
 
                 Section("History") {
@@ -107,14 +113,28 @@ private struct TrackView: View {
                 }
             }
             .navigationTitle("Track")
-            .ongoingPeriodEditor(entry: entries.first { $0.endDate == nil })
+            .ongoingPeriodEditor(entries: entries)
         }
     }
 
+    private var selectedEndDate: Date? {
+        hasEndDate ? endDate : nil
+    }
+
+    private var overlapsExistingPeriod: Bool {
+        PeriodEntry.overlapsExisting(startDate: startDate, endDate: selectedEndDate, in: entries)
+    }
+
+    private var canSave: Bool {
+        (!hasEndDate || endDate >= startDate) && !overlapsExistingPeriod
+    }
+
     private func addEntry() {
+        guard canSave else { return }
+
         let entry = PeriodEntry(
             startDate: startDate,
-            endDate: hasEndDate ? endDate : nil,
+            endDate: selectedEndDate,
             symptoms: Array(selectedSymptoms),
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
         )
@@ -463,7 +483,7 @@ private struct HistoryContent: View {
         } else {
             ForEach(entries) { entry in
                 NavigationLink {
-                    EntryDetailView(entry: entry)
+                    EntryDetailView(entry: entry, entries: entries)
                 } label: {
                     EntryRow(entry: entry)
                 }
@@ -510,34 +530,40 @@ private struct EntryRow: View {
 }
 
 private struct EntryDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Bindable var entry: PeriodEntry
+    let entries: [PeriodEntry]
+    @State private var startDate: Date
+    @State private var endDate: Date
     @State private var selectedSymptoms: Set<String>
     @State private var hasEndDate: Bool
+    @State private var notes: String
 
-    init(entry: PeriodEntry) {
+    init(entry: PeriodEntry, entries: [PeriodEntry]) {
         self.entry = entry
+        self.entries = entries
+        _startDate = State(initialValue: entry.startDate)
+        _endDate = State(initialValue: entry.endDate ?? entry.startDate)
         _selectedSymptoms = State(initialValue: Set(entry.symptoms))
         _hasEndDate = State(initialValue: entry.endDate != nil)
+        _notes = State(initialValue: entry.notes)
     }
 
     var body: some View {
         Form {
             Section("Dates") {
-                DatePicker("Started", selection: $entry.startDate, displayedComponents: .date)
+                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                    .onChange(of: startDate) { _, newValue in
+                        endDate = max(endDate, newValue)
+                    }
 
                 Toggle("Ended", isOn: $hasEndDate.animation())
-                    .onChange(of: hasEndDate) { _, newValue in
-                        entry.endDate = newValue ? max(entry.endDate ?? entry.startDate, entry.startDate) : nil
-                    }
 
                 if hasEndDate {
                     DatePicker(
                         "Ended on",
-                        selection: Binding(
-                            get: { entry.endDate ?? entry.startDate },
-                            set: { entry.endDate = max($0, entry.startDate) }
-                        ),
-                        in: entry.startDate...,
+                        selection: $endDate,
+                        in: startDate...,
                         displayedComponents: .date
                     )
                 }
@@ -545,22 +571,57 @@ private struct EntryDetailView: View {
 
             Section {
                 SymptomPicker(selection: $selectedSymptoms)
-                    .onChange(of: selectedSymptoms) { _, newValue in
-                        entry.symptoms = Array(newValue)
-                    }
             }
 
             Section("Notes") {
-                TextField("Notes", text: $entry.notes, axis: .vertical)
+                TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(3...8)
+            }
+
+
+            if overlapsExistingPeriod {
+                Section {
+                    Label("These dates overlap a saved period.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                }
             }
         }
         .navigationTitle("Period")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    save()
+                }
+                .disabled(overlapsExistingPeriod)
+            }
+        }
+    }
+
+    private var selectedEndDate: Date? {
+        hasEndDate ? endDate : nil
+    }
+
+    private var overlapsExistingPeriod: Bool {
+        PeriodEntry.overlapsExisting(
+            startDate: startDate,
+            endDate: selectedEndDate,
+            in: entries,
+            excluding: entry
+        )
+    }
+
+    private func save() {
+        guard !overlapsExistingPeriod else { return }
+        entry.startDate = startDate
+        entry.endDate = selectedEndDate
+        entry.symptoms = Array(selectedSymptoms)
+        entry.notes = notes
+        dismiss()
     }
 }
 
 private struct PrivacyView: View {
-    let ongoingPeriod: PeriodEntry?
+    let entries: [PeriodEntry]
 
     var body: some View {
         NavigationStack {
@@ -581,20 +642,24 @@ private struct PrivacyView: View {
                 }
             }
             .navigationTitle("Privacy")
-            .ongoingPeriodEditor(entry: ongoingPeriod)
+            .ongoingPeriodEditor(entries: entries)
         }
     }
 }
 
 private extension View {
-    func ongoingPeriodEditor(entry: PeriodEntry?) -> some View {
-        modifier(OngoingPeriodEditorModifier(ongoingPeriod: entry))
+    func ongoingPeriodEditor(entries: [PeriodEntry]) -> some View {
+        modifier(OngoingPeriodEditorModifier(entries: entries))
     }
 }
 
 private struct OngoingPeriodEditorModifier: ViewModifier {
-    let ongoingPeriod: PeriodEntry?
+    let entries: [PeriodEntry]
     @State private var editingPeriod: PeriodEntry?
+
+    private var ongoingPeriod: PeriodEntry? {
+        entries.first { $0.endDate == nil }
+    }
 
     func body(content: Content) -> some View {
         content
@@ -609,7 +674,7 @@ private struct OngoingPeriodEditorModifier: ViewModifier {
         }
         .navigationDestination(isPresented: isEditing) {
             if let editingPeriod {
-                EntryDetailView(entry: editingPeriod)
+                EntryDetailView(entry: editingPeriod, entries: entries)
             }
         }
     }

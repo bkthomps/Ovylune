@@ -35,5 +35,25 @@ final class PeriodEntry {
             symptomTagsRaw = newValue.sorted().joined(separator: ",")
         }
     }
-}
 
+    static func overlapsExisting(
+        startDate: Date,
+        endDate: Date?,
+        in entries: [PeriodEntry],
+        excluding excludedEntry: PeriodEntry? = nil,
+        calendar: Calendar = .current
+    ) -> Bool {
+        let candidateStart = calendar.startOfDay(for: startDate)
+        let candidateEnd = endDate.map { calendar.startOfDay(for: $0) }
+
+        return entries.contains { entry in
+            guard entry !== excludedEntry else { return false }
+
+            let existingStart = calendar.startOfDay(for: entry.startDate)
+            let existingEnd = entry.endDate.map { calendar.startOfDay(for: $0) }
+            let startsBeforeCandidateEnds = candidateEnd.map { existingStart <= $0 } ?? true
+            let candidateStartsBeforeEnd = existingEnd.map { candidateStart <= $0 } ?? true
+            return startsBeforeCandidateEnds && candidateStartsBeforeEnd
+        }
+    }
+}
