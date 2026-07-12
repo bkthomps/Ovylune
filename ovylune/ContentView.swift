@@ -11,6 +11,10 @@ import SwiftUI
 struct ContentView: View {
     @Query(sort: \PeriodEntry.startDate, order: .reverse) private var entries: [PeriodEntry]
 
+    private var ongoingPeriod: PeriodEntry? {
+        entries.first { $0.endDate == nil }
+    }
+
     var body: some View {
         TabView {
             CalendarView(entries: entries)
@@ -23,7 +27,7 @@ struct ContentView: View {
                     Label("Track", systemImage: "plus.circle")
                 }
 
-            PrivacyView()
+            PrivacyView(ongoingPeriod: ongoingPeriod)
                 .tabItem {
                     Label("Privacy", systemImage: "lock.shield")
                 }
@@ -55,6 +59,7 @@ private struct CalendarView: View {
             }
             .listSectionSpacing(16)
             .navigationTitle("Calendar")
+            .ongoingPeriodEditor(entry: entries.first { $0.endDate == nil })
         }
     }
 }
@@ -102,6 +107,7 @@ private struct TrackView: View {
                 }
             }
             .navigationTitle("Track")
+            .ongoingPeriodEditor(entry: entries.first { $0.endDate == nil })
         }
     }
 
@@ -554,6 +560,8 @@ private struct EntryDetailView: View {
 }
 
 private struct PrivacyView: View {
+    let ongoingPeriod: PeriodEntry?
+
     var body: some View {
         NavigationStack {
             List {
@@ -573,7 +581,48 @@ private struct PrivacyView: View {
                 }
             }
             .navigationTitle("Privacy")
+            .ongoingPeriodEditor(entry: ongoingPeriod)
         }
+    }
+}
+
+private extension View {
+    func ongoingPeriodEditor(entry: PeriodEntry?) -> some View {
+        modifier(OngoingPeriodEditorModifier(ongoingPeriod: entry))
+    }
+}
+
+private struct OngoingPeriodEditorModifier: ViewModifier {
+    let ongoingPeriod: PeriodEntry?
+    @State private var editingPeriod: PeriodEntry?
+
+    func body(content: Content) -> some View {
+        content
+        .toolbar {
+            if let ongoingPeriod {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit Ongoing Period") {
+                        editingPeriod = ongoingPeriod
+                    }
+                }
+            }
+        }
+        .navigationDestination(isPresented: isEditing) {
+            if let editingPeriod {
+                EntryDetailView(entry: editingPeriod)
+            }
+        }
+    }
+
+    private var isEditing: Binding<Bool> {
+        Binding(
+            get: { editingPeriod != nil },
+            set: { isPresented in
+                if !isPresented {
+                    editingPeriod = nil
+                }
+            }
+        )
     }
 }
 
