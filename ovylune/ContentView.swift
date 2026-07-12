@@ -13,14 +13,14 @@ struct ContentView: View {
 
     var body: some View {
         TabView {
-            DashboardView(entries: entries)
+            CalendarView(entries: entries)
                 .tabItem {
-                    Label("Today", systemImage: "calendar")
+                    Label("Calendar", systemImage: "calendar")
                 }
 
-            HistoryView(entries: entries)
+            TrackView(entries: entries)
                 .tabItem {
-                    Label("History", systemImage: "clock")
+                    Label("Track", systemImage: "plus.circle")
                 }
 
             PrivacyView()
@@ -31,15 +31,8 @@ struct ContentView: View {
     }
 }
 
-private struct DashboardView: View {
-    @Environment(\.modelContext) private var modelContext
+private struct CalendarView: View {
     let entries: [PeriodEntry]
-
-    @State private var startDate = Date()
-    @State private var endDate = Date()
-    @State private var hasEndDate = true
-    @State private var selectedSymptoms: Set<String> = []
-    @State private var notes = ""
 
     private var summary: CycleSummary {
         CycleInsights.summary(for: entries)
@@ -49,9 +42,35 @@ private struct DashboardView: View {
         NavigationStack {
             List {
                 Section {
-                    InsightGrid(summary: summary)
+                    MonthPager(entries: entries)
                 }
 
+                Section {
+                    InsightGrid(summary: summary)
+
+                    Text("Predictions are estimates for personal tracking only.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Calendar")
+        }
+    }
+}
+
+private struct TrackView: View {
+    @Environment(\.modelContext) private var modelContext
+    let entries: [PeriodEntry]
+
+    @State private var startDate = Date()
+    @State private var endDate = Date()
+    @State private var hasEndDate = true
+    @State private var selectedSymptoms: Set<String> = []
+    @State private var notes = ""
+
+    var body: some View {
+        NavigationStack {
+            List {
                 Section("Log a period") {
                     DatePicker("Started", selection: $startDate, displayedComponents: .date)
                         .onChange(of: startDate) { _, newValue in
@@ -77,23 +96,16 @@ private struct DashboardView: View {
                     .disabled(hasEndDate && endDate < startDate)
                 }
 
-                Section("Estimate") {
-                    if let nextPeriodStart = summary.nextPeriodStart {
-                        LabeledContent("Next period") {
-                            Text(nextPeriodStart, format: .dateTime.month(.abbreviated).day().year())
-                                .fontWeight(.semibold)
-                        }
-                    } else {
-                        Text("Log at least one period to see an upcoming estimate.")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text("Predictions are estimates for personal tracking only.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                Section("History") {
+                    HistoryContent(entries: entries, deleteEntries: deleteEntries)
                 }
             }
-            .navigationTitle("Ovylune")
+            .navigationTitle("Track")
+            .toolbar {
+                if !entries.isEmpty {
+                    EditButton()
+                }
+            }
         }
     }
 
@@ -115,6 +127,182 @@ private struct DashboardView: View {
         hasEndDate = true
         selectedSymptoms.removeAll()
         notes = ""
+    }
+
+    private func deleteEntries(at offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(entries[index])
+        }
+    }
+}
+
+private struct MonthPager: View {
+    let entries: [PeriodEntry]
+
+    @State private var selectedOffset = 0
+
+    private let calendar = Calendar.current
+    private let monthOffsets = Array(-120...120)
+
+    var body: some View {
+        TabView(selection: $selectedOffset) {
+            ForEach(monthOffsets, id: \.self) { offset in
+                MonthCalendar(
+                    month: month(for: offset),
+                    periodDays: periodDays
+                )
+                .tag(offset)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(minHeight: 330)
+        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+    }
+
+    private var periodDays: Set<Date> {
+        Set(entries.flatMap { entry in
+            daysCovered(by: entry)
+        })
+    }
+
+    private func month(for offset: Int) -> Date {
+        let today = calendar.startOfDay(for: Date())
+        let currentMonth = calendar.dateInterval(of: .month, for: today)?.start ?? today
+        return calendar.date(byAdding: .month, value: offset, to: currentMonth) ?? currentMonth
+    }
+
+    private func daysCovered(by entry: PeriodEntry) -> [Date] {
+        let start = calendar.startOfDay(for: entry.startDate)
+        let end = calendar.startOfDay(for: entry.endDate ?? Date())
+        let dayCount = max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
+
+        return (0...dayCount).compactMap {
+            calendar.date(byAdding: .day, value: $0, to: start)
+        }
+    }
+}
+
+private struct MonthCalendar: View {
+    let month: Date
+    let periodDays: Set<Date>
+
+    private let calendar = Calendar.current
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text(month, format: .dateTime.month(.wide).year())
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, weekday in
+                    Text(weekday)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                }
+
+                ForEach(calendarDays, id: \.id) { day in
+                    DayCell(day: day, hasPeriod: day.date.map { periodDays.contains(calendar.startOfDay(for: $0)) } ?? false)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(.pink)
+                    .frame(width: 8, height: 8)
+                Text("Period logged")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var weekdaySymbols: [String] {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        let firstWeekdayIndex = calendar.firstWeekday - 1
+        return Array(symbols[firstWeekdayIndex...]) + Array(symbols[..<firstWeekdayIndex])
+    }
+
+    private var calendarDays: [CalendarDay] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: month),
+              let firstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
+              let lastWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.end.addingTimeInterval(-1))
+        else { return [] }
+
+        let dayCount = calendar.dateComponents([.day], from: firstWeek.start, to: lastWeek.end).day ?? 0
+
+        return (0..<dayCount).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: firstWeek.start) else {
+                return nil
+            }
+
+            let isCurrentMonth = calendar.isDate(date, equalTo: month, toGranularity: .month)
+            return CalendarDay(date: isCurrentMonth ? date : nil, placeholderIndex: offset)
+        }
+    }
+}
+
+private struct CalendarDay {
+    let date: Date?
+    let placeholderIndex: Int
+
+    var id: String {
+        if let date {
+            return date.formatted(.iso8601.year().month().day())
+        }
+
+        return "placeholder-\(placeholderIndex)"
+    }
+}
+
+private struct DayCell: View {
+    let day: CalendarDay
+    let hasPeriod: Bool
+
+    private let calendar = Calendar.current
+
+    var body: some View {
+        ZStack {
+            if hasPeriod {
+                Circle()
+                    .fill(.pink.opacity(0.18))
+            }
+
+            Text(dayNumber)
+                .font(.subheadline.weight(hasPeriod ? .semibold : .regular))
+                .foregroundStyle(hasPeriod ? .pink : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity)
+
+            if hasPeriod {
+                Circle()
+                    .fill(.pink)
+                    .frame(width: 5, height: 5)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 5)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .opacity(day.date == nil ? 0 : 1)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var dayNumber: String {
+        guard let date = day.date else { return "" }
+        return String(calendar.component(.day, from: date))
+    }
+
+    private var accessibilityLabel: String {
+        guard let date = day.date else { return "Empty day" }
+        let formatted = date.formatted(.dateTime.month(.wide).day().year())
+        return hasPeriod ? "\(formatted), period logged" : formatted
     }
 }
 
@@ -139,14 +327,42 @@ private struct InsightGrid: View {
 
             GridRow {
                 InsightTile(
-                    title: "Last start",
-                    value: summary.lastPeriodStart.map { $0.formatted(.dateTime.month(.abbreviated).day()) } ?? "None",
+                    title: "Last Period",
+                    value: lastPeriodRange,
                     detail: "Logged locally"
                 )
-                .gridCellColumns(2)
+
+                InsightTile(
+                    title: "Next Period",
+                    value: nextPeriodRange,
+                    detail: summary.nextPeriodStart == nil ? "Log a period" : "Estimate"
+                )
             }
         }
         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+    }
+
+    private var lastPeriodRange: String {
+        guard let start = summary.lastPeriodStart else { return "None" }
+        return dateRange(from: start, to: summary.lastPeriodEnd)
+    }
+
+    private var nextPeriodRange: String {
+        guard let start = summary.nextPeriodStart else { return "None" }
+        let periodLength = summary.averagePeriodLength ?? CycleInsights.fallbackPeriodLength
+        let end = Calendar.current.date(byAdding: .day, value: periodLength - 1, to: start)
+        return dateRange(from: start, to: end)
+    }
+
+    private func dateRange(from start: Date, to end: Date?) -> String {
+        let formattedStart = start.formatted(.dateTime.month(.abbreviated).day())
+
+        guard let end else {
+            return "\(formattedStart) - ongoing"
+        }
+
+        let formattedEnd = end.formatted(.dateTime.month(.abbreviated).day())
+        return "\(formattedStart) - \(formattedEnd)"
     }
 }
 
@@ -218,42 +434,26 @@ private struct SymptomPicker: View {
     }
 }
 
-private struct HistoryView: View {
-    @Environment(\.modelContext) private var modelContext
+private struct HistoryContent: View {
     let entries: [PeriodEntry]
+    let deleteEntries: (IndexSet) -> Void
 
     var body: some View {
-        NavigationStack {
-            List {
-                if entries.isEmpty {
-                    ContentUnavailableView(
-                        "No periods logged",
-                        systemImage: "calendar.badge.plus",
-                        description: Text("Saved periods will appear here.")
-                    )
-                } else {
-                    ForEach(entries) { entry in
-                        NavigationLink {
-                            EntryDetailView(entry: entry)
-                        } label: {
-                            EntryRow(entry: entry)
-                        }
-                    }
-                    .onDelete(perform: deleteEntries)
+        if entries.isEmpty {
+            ContentUnavailableView(
+                "No periods logged",
+                systemImage: "calendar.badge.plus",
+                description: Text("Saved periods will appear here.")
+            )
+        } else {
+            ForEach(entries) { entry in
+                NavigationLink {
+                    EntryDetailView(entry: entry)
+                } label: {
+                    EntryRow(entry: entry)
                 }
             }
-            .navigationTitle("History")
-            .toolbar {
-                if !entries.isEmpty {
-                    EditButton()
-                }
-            }
-        }
-    }
-
-    private func deleteEntries(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(entries[index])
+            .onDelete(perform: deleteEntries)
         }
     }
 }

@@ -12,6 +12,7 @@ struct CycleSummary {
     let averagePeriodLength: Int?
     let nextPeriodStart: Date?
     let lastPeriodStart: Date?
+    let lastPeriodEnd: Date?
 }
 
 enum CycleInsights {
@@ -22,7 +23,8 @@ enum CycleInsights {
         let sorted = entries.sorted { $0.startDate < $1.startDate }
         let averageCycleLength = averageCycleLength(from: sorted, calendar: calendar)
         let averagePeriodLength = averagePeriodLength(from: sorted, calendar: calendar)
-        let lastStart = sorted.last?.startDate
+        let lastEntry = sorted.last
+        let lastStart = lastEntry?.startDate
         let nextStart = lastStart.flatMap {
             calendar.date(byAdding: .day, value: averageCycleLength ?? fallbackCycleLength, to: calendar.startOfDay(for: $0))
         }
@@ -31,7 +33,8 @@ enum CycleInsights {
             averageCycleLength: averageCycleLength,
             averagePeriodLength: averagePeriodLength,
             nextPeriodStart: nextStart,
-            lastPeriodStart: lastStart
+            lastPeriodStart: lastStart,
+            lastPeriodEnd: lastEntry?.endDate
         )
     }
 
@@ -63,4 +66,3 @@ enum CycleInsights {
         return Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded())
     }
 }
-
