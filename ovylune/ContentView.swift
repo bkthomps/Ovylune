@@ -9,6 +9,18 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+private enum SelectableDates {
+    static var range: ClosedRange<Date> {
+        let calendar = Calendar.current
+        let earliestDate = calendar.date(from: DateComponents(year: 1900, month: 1, day: 1))!
+        return earliestDate...Date()
+    }
+
+    static func ending(onOrAfter startDate: Date) -> ClosedRange<Date> {
+        startDate...Date()
+    }
+}
+
 struct ContentView: View {
     @Query(sort: \PeriodEntry.startDate, order: .reverse) private var entries: [PeriodEntry]
     @Query(sort: \OvulationEntry.startDate, order: .reverse) private var ovulationEntries: [OvulationEntry]
@@ -171,15 +183,23 @@ private struct TrackView: View {
     private var periodContent: some View {
         List {
             Section {
-                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                DatePicker("Started", selection: $startDate, in: SelectableDates.range, displayedComponents: .date)
                     .onChange(of: startDate) { _, newValue in
-                        endDate = CycleInsights.estimatedPeriodEnd(startingOn: newValue, entries: entries)
+                        endDate = min(
+                            CycleInsights.estimatedPeriodEnd(startingOn: newValue, entries: entries),
+                            Date()
+                        )
                     }
 
                 Toggle("Ended", isOn: $hasEndDate.animation())
 
                 if hasEndDate {
-                    DatePicker("Ended on", selection: $endDate, in: startDate..., displayedComponents: .date)
+                    DatePicker(
+                        "Ended on",
+                        selection: $endDate,
+                        in: SelectableDates.ending(onOrAfter: startDate),
+                        displayedComponents: .date
+                    )
                 }
 
                 if !availableSymptoms.isEmpty {
@@ -289,7 +309,7 @@ private struct OvulationTrackView: View {
     var body: some View {
         List {
             Section {
-                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                DatePicker("Started", selection: $startDate, in: SelectableDates.range, displayedComponents: .date)
                     .onChange(of: startDate) { _, newValue in
                         endDate = newValue
                     }
@@ -297,7 +317,12 @@ private struct OvulationTrackView: View {
                 Toggle("Multiple Days", isOn: $multipleDays.animation())
 
                 if multipleDays {
-                    DatePicker("Ended", selection: $endDate, in: startDate..., displayedComponents: .date)
+                    DatePicker(
+                        "Ended",
+                        selection: $endDate,
+                        in: SelectableDates.ending(onOrAfter: startDate),
+                        displayedComponents: .date
+                    )
                 }
 
                 TextField("Notes", text: $notes, axis: .vertical)
@@ -993,7 +1018,7 @@ private struct OvulationEntryDetailView: View {
     var body: some View {
         Form {
             Section("Dates") {
-                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                DatePicker("Started", selection: $startDate, in: SelectableDates.range, displayedComponents: .date)
                     .onChange(of: startDate) { _, newValue in
                         endDate = newValue
                     }
@@ -1001,7 +1026,12 @@ private struct OvulationEntryDetailView: View {
                 Toggle("Multiple Days", isOn: $multipleDays.animation())
 
                 if multipleDays {
-                    DatePicker("Ended", selection: $endDate, in: startDate..., displayedComponents: .date)
+                    DatePicker(
+                        "Ended",
+                        selection: $endDate,
+                        in: SelectableDates.ending(onOrAfter: startDate),
+                        displayedComponents: .date
+                    )
                 }
             }
 
@@ -1146,7 +1176,7 @@ private struct EntryDetailView: View {
     var body: some View {
         Form {
             Section("Dates") {
-                DatePicker("Started", selection: $startDate, displayedComponents: .date)
+                DatePicker("Started", selection: $startDate, in: SelectableDates.range, displayedComponents: .date)
                     .onChange(of: startDate) { _, newValue in
                         endDate = max(endDate, newValue)
                     }
@@ -1157,7 +1187,7 @@ private struct EntryDetailView: View {
                     DatePicker(
                         "Ended on",
                         selection: $endDate,
-                        in: startDate...,
+                        in: SelectableDates.ending(onOrAfter: startDate),
                         displayedComponents: .date
                     )
                 }
