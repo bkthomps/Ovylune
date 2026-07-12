@@ -80,7 +80,10 @@ private struct TrackView: View {
                 Section("Log a period") {
                     DatePicker("Started", selection: $startDate, displayedComponents: .date)
                         .onChange(of: startDate) { _, newValue in
-                            endDate = max(endDate, newValue)
+                            endDate = CycleInsights.estimatedPeriodEnd(
+                                startingOn: newValue,
+                                entries: entries
+                            )
                         }
 
                     Toggle("Ended", isOn: $hasEndDate.animation())

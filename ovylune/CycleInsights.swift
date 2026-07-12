@@ -65,4 +65,13 @@ enum CycleInsights {
         guard !lengths.isEmpty else { return nil }
         return Int((Double(lengths.reduce(0, +)) / Double(lengths.count)).rounded())
     }
+
+    static func estimatedPeriodEnd(
+        startingOn startDate: Date,
+        entries: [PeriodEntry],
+        calendar: Calendar = .current
+    ) -> Date {
+        let periodLength = averagePeriodLength(from: entries, calendar: calendar) ?? fallbackPeriodLength
+        return calendar.date(byAdding: .day, value: periodLength - 1, to: startDate) ?? startDate
+    }
 }

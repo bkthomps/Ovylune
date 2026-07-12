@@ -51,6 +51,31 @@ struct ovyluneTests {
         #expect(summary.nextPeriodStart == date(2026, 4, 7))
     }
 
+    @Test func estimatedPeriodEndUsesAveragePeriodLength() {
+        let entries = [
+            PeriodEntry(startDate: date(2026, 1, 1), endDate: date(2026, 1, 5)),
+            PeriodEntry(startDate: date(2026, 2, 1), endDate: date(2026, 2, 3))
+        ]
+
+        #expect(
+            CycleInsights.estimatedPeriodEnd(
+                startingOn: date(2026, 3, 10),
+                entries: entries,
+                calendar: calendar
+            ) == date(2026, 3, 13)
+        )
+    }
+
+    @Test func estimatedPeriodEndUsesFallbackWithoutCompletedPeriods() {
+        #expect(
+            CycleInsights.estimatedPeriodEnd(
+                startingOn: date(2026, 3, 10),
+                entries: [],
+                calendar: calendar
+            ) == date(2026, 3, 14)
+        )
+    }
+
     @Test func detectsInclusiveAndOngoingOverlaps() {
         let entries = [
             PeriodEntry(startDate: date(2026, 1, 10), endDate: date(2026, 1, 14)),
