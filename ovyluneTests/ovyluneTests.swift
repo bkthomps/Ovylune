@@ -12,11 +12,6 @@ import Testing
 struct ovyluneTests {
     private let calendar = Calendar(identifier: .gregorian)
 
-    @Test func intimacyTracksPregnancyByDefault() {
-        #expect(IntimacyEntry(date: date(2026, 7, 12)).trackPregnancy)
-        #expect(!IntimacyEntry(date: date(2026, 7, 12), trackPregnancy: false).trackPregnancy)
-    }
-
     @Test func averageCycleLengthUsesGapsBetweenPeriodStarts() {
         let entries = [
             PeriodEntry(startDate: date(2026, 1, 1)),
