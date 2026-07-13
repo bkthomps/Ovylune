@@ -14,10 +14,10 @@ final class AppSettings {
         "Cramps", "Headache", "Fatigue", "Bloating", "Tenderness", "Mood shifts"
     ]
 
-    var isOvulationTrackingEnabled: Bool
-    var isIntimacyTrackingEnabled: Bool
-    var firstWeekday: Int
-    private var symptomsData: Data
+    var encryptedOvulationTrackingEnabled: Data
+    var encryptedIntimacyTrackingEnabled: Data
+    var encryptedFirstWeekday: Data
+    var encryptedSymptoms: Data
 
     init(
         isOvulationTrackingEnabled: Bool = true,
@@ -25,18 +25,33 @@ final class AppSettings {
         firstWeekday: Int = 1,
         symptoms: [String] = AppSettings.defaultSymptoms
     ) {
-        self.isOvulationTrackingEnabled = isOvulationTrackingEnabled
-        self.isIntimacyTrackingEnabled = isIntimacyTrackingEnabled
-        self.firstWeekday = firstWeekday
-        self.symptomsData = (try? JSONEncoder().encode(symptoms)) ?? Data()
+        encryptedOvulationTrackingEnabled = EncryptedField.seal(isOvulationTrackingEnabled)
+        encryptedIntimacyTrackingEnabled = EncryptedField.seal(isIntimacyTrackingEnabled)
+        encryptedFirstWeekday = EncryptedField.seal(firstWeekday)
+        encryptedSymptoms = EncryptedField.seal(symptoms)
+    }
+
+    var isOvulationTrackingEnabled: Bool {
+        get { EncryptedField.open(Bool.self, from: encryptedOvulationTrackingEnabled) }
+        set { encryptedOvulationTrackingEnabled = EncryptedField.seal(newValue) }
+    }
+
+    var isIntimacyTrackingEnabled: Bool {
+        get { EncryptedField.open(Bool.self, from: encryptedIntimacyTrackingEnabled) }
+        set { encryptedIntimacyTrackingEnabled = EncryptedField.seal(newValue) }
+    }
+
+    var firstWeekday: Int {
+        get { EncryptedField.open(Int.self, from: encryptedFirstWeekday) }
+        set { encryptedFirstWeekday = EncryptedField.seal(newValue) }
     }
 
     var symptoms: [String] {
         get {
-            (try? JSONDecoder().decode([String].self, from: symptomsData)) ?? Self.defaultSymptoms
+            EncryptedField.open([String].self, from: encryptedSymptoms)
         }
         set {
-            symptomsData = (try? JSONEncoder().encode(newValue)) ?? Data()
+            encryptedSymptoms = EncryptedField.seal(newValue)
         }
     }
 
@@ -50,29 +65,46 @@ final class AppSettings {
 
 @Model
 final class PeriodEntry {
-    var startDate: Date
-    var endDate: Date?
-    var symptomTagsRaw: String
-    var notes: String
-    var createdAt: Date
+    var encryptedStartDate: Data
+    var encryptedEndDate: Data
+    var encryptedSymptoms: Data
+    var encryptedNotes: Data
+    var encryptedCreatedAt: Data
 
     init(startDate: Date, endDate: Date? = nil, symptoms: [String] = [], notes: String = "", createdAt: Date = .now) {
-        self.startDate = startDate
-        self.endDate = endDate
-        self.symptomTagsRaw = symptoms.sorted().joined(separator: ",")
-        self.notes = notes
-        self.createdAt = createdAt
+        encryptedStartDate = EncryptedField.seal(startDate)
+        encryptedEndDate = EncryptedField.seal(endDate)
+        encryptedSymptoms = EncryptedField.seal(symptoms.sorted())
+        encryptedNotes = EncryptedField.seal(notes)
+        encryptedCreatedAt = EncryptedField.seal(createdAt)
+    }
+
+    var startDate: Date {
+        get { EncryptedField.open(Date.self, from: encryptedStartDate) }
+        set { encryptedStartDate = EncryptedField.seal(newValue) }
+    }
+
+    var endDate: Date? {
+        get { EncryptedField.open(Date?.self, from: encryptedEndDate) }
+        set { encryptedEndDate = EncryptedField.seal(newValue) }
+    }
+
+    var notes: String {
+        get { EncryptedField.open(String.self, from: encryptedNotes) }
+        set { encryptedNotes = EncryptedField.seal(newValue) }
+    }
+
+    var createdAt: Date {
+        get { EncryptedField.open(Date.self, from: encryptedCreatedAt) }
+        set { encryptedCreatedAt = EncryptedField.seal(newValue) }
     }
 
     var symptoms: [String] {
         get {
-            symptomTagsRaw
-                .split(separator: ",")
-                .map { String($0) }
-                .filter { !$0.isEmpty }
+            EncryptedField.open([String].self, from: encryptedSymptoms)
         }
         set {
-            symptomTagsRaw = newValue.sorted().joined(separator: ",")
+            encryptedSymptoms = EncryptedField.seal(newValue.sorted())
         }
     }
 
@@ -117,16 +149,36 @@ final class PeriodEntry {
 
 @Model
 final class OvulationEntry {
-    var startDate: Date
-    var endDate: Date?
-    var notes: String
-    var createdAt: Date
+    var encryptedStartDate: Data
+    var encryptedEndDate: Data
+    var encryptedNotes: Data
+    var encryptedCreatedAt: Data
 
     init(startDate: Date, endDate: Date? = nil, notes: String = "", createdAt: Date = .now) {
-        self.startDate = startDate
-        self.endDate = endDate
-        self.notes = notes
-        self.createdAt = createdAt
+        encryptedStartDate = EncryptedField.seal(startDate)
+        encryptedEndDate = EncryptedField.seal(endDate)
+        encryptedNotes = EncryptedField.seal(notes)
+        encryptedCreatedAt = EncryptedField.seal(createdAt)
+    }
+
+    var startDate: Date {
+        get { EncryptedField.open(Date.self, from: encryptedStartDate) }
+        set { encryptedStartDate = EncryptedField.seal(newValue) }
+    }
+
+    var endDate: Date? {
+        get { EncryptedField.open(Date?.self, from: encryptedEndDate) }
+        set { encryptedEndDate = EncryptedField.seal(newValue) }
+    }
+
+    var notes: String {
+        get { EncryptedField.open(String.self, from: encryptedNotes) }
+        set { encryptedNotes = EncryptedField.seal(newValue) }
+    }
+
+    var createdAt: Date {
+        get { EncryptedField.open(Date.self, from: encryptedCreatedAt) }
+        set { encryptedCreatedAt = EncryptedField.seal(newValue) }
     }
 
     static func overlapsExisting(
@@ -151,13 +203,28 @@ final class OvulationEntry {
 
 @Model
 final class IntimacyEntry {
-    var date: Date
-    var notes: String
-    var createdAt: Date
+    var encryptedDate: Data
+    var encryptedNotes: Data
+    var encryptedCreatedAt: Data
 
     init(date: Date, notes: String = "", createdAt: Date = .now) {
-        self.date = date
-        self.notes = notes
-        self.createdAt = createdAt
+        encryptedDate = EncryptedField.seal(date)
+        encryptedNotes = EncryptedField.seal(notes)
+        encryptedCreatedAt = EncryptedField.seal(createdAt)
+    }
+
+    var date: Date {
+        get { EncryptedField.open(Date.self, from: encryptedDate) }
+        set { encryptedDate = EncryptedField.seal(newValue) }
+    }
+
+    var notes: String {
+        get { EncryptedField.open(String.self, from: encryptedNotes) }
+        set { encryptedNotes = EncryptedField.seal(newValue) }
+    }
+
+    var createdAt: Date {
+        get { EncryptedField.open(Date.self, from: encryptedCreatedAt) }
+        set { encryptedCreatedAt = EncryptedField.seal(newValue) }
     }
 }

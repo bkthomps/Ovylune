@@ -6,11 +6,87 @@
 //
 
 import Foundation
+import SwiftData
 import Testing
 @testable import ovylune
 
 struct ovyluneTests {
     private let calendar = Calendar(identifier: .gregorian)
+
+    @Test func encryptedModelsRoundTripEveryField() throws {
+        let start = date(2026, 6, 10)
+        let end = date(2026, 6, 14)
+        let created = date(2026, 6, 1)
+        let settings = AppSettings(
+            isOvulationTrackingEnabled: false,
+            isIntimacyTrackingEnabled: false,
+            firstWeekday: 2,
+            symptoms: ["Private symptom"]
+        )
+        let period = PeriodEntry(
+            startDate: start,
+            endDate: end,
+            symptoms: ["Private symptom"],
+            notes: "private period note",
+            createdAt: created
+        )
+        let ovulation = OvulationEntry(
+            startDate: start,
+            endDate: end,
+            notes: "private ovulation note",
+            createdAt: created
+        )
+        let intimacy = IntimacyEntry(
+            date: start,
+            notes: "private intimacy note",
+            createdAt: created
+        )
+
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: AppSettings.self,
+            PeriodEntry.self,
+            OvulationEntry.self,
+            IntimacyEntry.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+        context.insert(settings)
+        context.insert(period)
+        context.insert(ovulation)
+        context.insert(intimacy)
+        try context.save()
+
+        #expect(!settings.isOvulationTrackingEnabled)
+        #expect(!settings.isIntimacyTrackingEnabled)
+        #expect(settings.firstWeekday == 2)
+        #expect(settings.symptoms == ["Private symptom"])
+        #expect(period.startDate == start)
+        #expect(period.endDate == end)
+        #expect(period.symptoms == ["Private symptom"])
+        #expect(period.notes == "private period note")
+        #expect(period.createdAt == created)
+        #expect(ovulation.startDate == start)
+        #expect(ovulation.endDate == end)
+        #expect(ovulation.notes == "private ovulation note")
+        #expect(ovulation.createdAt == created)
+        #expect(intimacy.date == start)
+        #expect(intimacy.notes == "private intimacy note")
+        #expect(intimacy.createdAt == created)
+    }
+
+    @Test func ciphertextDoesNotContainSensitivePlaintext() {
+        let secret = "a uniquely private health note"
+        let period = PeriodEntry(
+            startDate: date(2026, 7, 1),
+            symptoms: [secret],
+            notes: secret
+        )
+
+        #expect(String(data: period.encryptedNotes, encoding: .utf8)?.contains(secret) != true)
+        #expect(String(data: period.encryptedSymptoms, encoding: .utf8)?.contains(secret) != true)
+        #expect(period.encryptedNotes != period.encryptedSymptoms)
+    }
 
     @Test func averageCycleLengthUsesGapsBetweenPeriodStarts() {
         let entries = [

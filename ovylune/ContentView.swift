@@ -23,9 +23,21 @@ private enum SelectableDates {
 
 struct ContentView: View {
     @Query private var appSettings: [AppSettings]
-    @Query(sort: \PeriodEntry.startDate, order: .reverse) private var entries: [PeriodEntry]
-    @Query(sort: \OvulationEntry.startDate, order: .reverse) private var ovulationEntries: [OvulationEntry]
-    @Query(sort: \IntimacyEntry.date, order: .reverse) private var intimacyEntries: [IntimacyEntry]
+    @Query private var storedEntries: [PeriodEntry]
+    @Query private var storedOvulationEntries: [OvulationEntry]
+    @Query private var storedIntimacyEntries: [IntimacyEntry]
+
+    private var entries: [PeriodEntry] {
+        storedEntries.sorted { $0.startDate > $1.startDate }
+    }
+
+    private var ovulationEntries: [OvulationEntry] {
+        storedOvulationEntries.sorted { $0.startDate > $1.startDate }
+    }
+
+    private var intimacyEntries: [IntimacyEntry] {
+        storedIntimacyEntries.sorted { $0.date > $1.date }
+    }
 
     private var ongoingPeriod: PeriodEntry? {
         entries.first { $0.endDate == nil }
