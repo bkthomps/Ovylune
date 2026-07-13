@@ -1688,6 +1688,7 @@ private struct SettingsView: View {
     @State private var newSymptom = ""
     @State private var isShowingDisableWarning = false
     @State private var isShowingIntimacyDisableWarning = false
+    @State private var isShowingDeleteAllDataWarning = false
 
     var body: some View {
         NavigationStack {
@@ -1701,6 +1702,10 @@ private struct SettingsView: View {
 
                     Toggle("Enable Ovulation Tracking", isOn: ovulationTrackingBinding)
                     Toggle("Enable Intimacy Tracking", isOn: intimacyTrackingBinding)
+
+                    Button("Delete All Data", role: .destructive) {
+                        isShowingDeleteAllDataWarning = true
+                    }
                 }
 
                 Section("Symptoms") {
@@ -1747,6 +1752,14 @@ private struct SettingsView: View {
             } message: {
                 Text("Your intimacy history will be permanently deleted. Do you want to continue?")
             }
+            .alert("Delete All Data?", isPresented: $isShowingDeleteAllDataWarning) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete All Data", role: .destructive) {
+                    deleteAllData()
+                }
+            } message: {
+                Text("This will permanently delete all period, ovulation, and intimacy history, including symptoms and notes, and reset your settings. This action cannot be undone.")
+            }
         }
     }
 
@@ -1792,6 +1805,24 @@ private struct SettingsView: View {
             modelContext.delete(entry)
         }
         isIntimacyTrackingEnabled = false
+    }
+
+    private func deleteAllData() {
+        for entry in entries {
+            modelContext.delete(entry)
+        }
+        for entry in ovulationEntries {
+            modelContext.delete(entry)
+        }
+        for entry in intimacyEntries {
+            modelContext.delete(entry)
+        }
+
+        storedSymptoms = SymptomCatalog.defaultEncoded
+        isOvulationTrackingEnabled = true
+        isIntimacyTrackingEnabled = true
+        firstWeekday = WeekStart.defaultValue
+        newSymptom = ""
     }
 
     private var symptoms: [String] {
