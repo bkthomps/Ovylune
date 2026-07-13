@@ -9,7 +9,7 @@ import SwiftData
 import SwiftUI
 import UIKit
 
-private let medicalDisclaimer = "Ovylune is intended for personal health, wellness, and symptom tracking. It is not a medical device and does not provide medical advice. Period, ovulation, and fertile day tracking is provided solely to help manage symptoms associated with those cycle phases; do not use it for pregnancy planning or contraception. Do not use it to diagnose, treat, cure, mitigate, or prevent any disease or condition, or to make other medical decisions. Estimates may be inaccurate. Consult a qualified healthcare professional before making medical decisions."
+private let medicalDisclaimer = "Ovylune is intended for personal health, wellness, and symptom tracking. It is not a medical device and does not provide medical advice. Period, ovulation, and fertile day tracking is provided solely to record symptoms and notice cycle patterns; do not use it for pregnancy planning or contraception. Do not use it to diagnose, treat, cure, mitigate, or prevent any disease or condition, or to make other medical decisions. Estimates may be inaccurate. Consult a qualified healthcare professional before making medical decisions."
 
 private struct MedicalDisclaimerText: View {
     var body: some View {
