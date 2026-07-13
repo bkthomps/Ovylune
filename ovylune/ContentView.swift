@@ -531,6 +531,7 @@ private struct MonthPager: View {
     @State private var loadedCenterOffset = 0
     @State private var measuredHeights: [MonthKey: CGFloat] = [:]
     @State private var cachedMonths: [MonthKey: MonthData] = [:]
+    @State private var recenterTask: Task<Void, Never>?
 
     private let calendar = Calendar.current
 
@@ -573,12 +574,14 @@ private struct MonthPager: View {
             synchronizeMonthCache()
         }
         .onChange(of: selectedOffset) { _, newOffset in
-            loadedCenterOffset = newOffset
-            synchronizeMonthCache()
+            scheduleRecenteringIfNeeded(for: newOffset)
         }
         .onChange(of: entryVersion) {
             cachedMonths.removeAll(keepingCapacity: true)
             synchronizeMonthCache()
+        }
+        .onDisappear {
+            recenterTask?.cancel()
         }
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
@@ -617,14 +620,33 @@ private struct MonthPager: View {
     private func synchronizeMonthCache() {
         let loadedMonths = monthOffsets.map { month(for: $0) }
         let loadedKeys = Set(loadedMonths.map(monthKey(for:)))
-        cachedMonths = cachedMonths.filter { loadedKeys.contains($0.key) }
+        var updatedCache = cachedMonths.filter { loadedKeys.contains($0.key) }
         measuredHeights = measuredHeights.filter { loadedKeys.contains($0.key) }
 
         for month in loadedMonths {
             let key = monthKey(for: month)
-            if cachedMonths[key] == nil {
-                cachedMonths[key] = makeMonthData(for: month)
+            if updatedCache[key] == nil {
+                updatedCache[key] = makeMonthData(for: month)
             }
+        }
+
+        cachedMonths = updatedCache
+    }
+
+    private func scheduleRecenteringIfNeeded(for offset: Int) {
+        recenterTask?.cancel()
+
+        // Keep the TabView's children stable during ordinary swipes. Replacing
+        // its page range while UIPageViewController is settling can make the
+        // on-device pager visibly jump, especially when persisted data makes
+        // each newly loaded month more expensive to build.
+        guard abs(offset - loadedCenterOffset) >= 4 else { return }
+
+        recenterTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, selectedOffset == offset else { return }
+            loadedCenterOffset = offset
+            synchronizeMonthCache()
         }
     }
 
