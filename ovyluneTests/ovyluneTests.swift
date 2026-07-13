@@ -130,7 +130,7 @@ struct ovyluneTests {
         #expect(CycleInsights.averagePeriodLength(from: entries, calendar: calendar) == 5)
     }
 
-    @Test func summaryPredictsNextPeriodFromLastLoggedStart() {
+    @Test func summaryEstimatesNextPeriodFromLastLoggedStart() {
         let entries = [
             PeriodEntry(startDate: date(2026, 1, 1)),
             PeriodEntry(startDate: date(2026, 1, 29))
@@ -163,7 +163,7 @@ struct ovyluneTests {
         #expect(summary.periodConfidence == .low)
     }
 
-    @Test func advancesPastPredictionToNextUpcomingCycle() {
+    @Test func advancesPastEstimateToNextUpcomingCycle() {
         let entries = [
             PeriodEntry(startDate: date(2026, 1, 1), endDate: date(2026, 1, 31))
         ]
@@ -172,7 +172,7 @@ struct ovyluneTests {
         #expect(summary.averageCycleLength == 54)
         #expect(summary.nextPeriodStart == date(2026, 2, 24))
         #expect(
-            CycleInsights.nextPrediction(
+            CycleInsights.nextEstimate(
                 startingOn: summary.nextPeriodStart!,
                 cycleLength: summary.averageCycleLength!,
                 onOrAfter: date(2026, 4, 1),
@@ -180,7 +180,7 @@ struct ovyluneTests {
             ) == date(2026, 4, 19)
         )
         #expect(
-            CycleInsights.nextPrediction(
+            CycleInsights.nextEstimate(
                 startingOn: summary.nextPeriodStart!,
                 cycleLength: summary.averageCycleLength!,
                 onOrAfter: date(2026, 6, 1),
@@ -188,7 +188,7 @@ struct ovyluneTests {
             ) == date(2026, 6, 12)
         )
         #expect(
-            CycleInsights.nextPrediction(
+            CycleInsights.nextEstimate(
                 startingOn: summary.nextPeriodStart!,
                 cycleLength: summary.averageCycleLength!,
                 onOrAfter: date(2026, 7, 12),
@@ -197,11 +197,11 @@ struct ovyluneTests {
         )
     }
 
-    @Test func predictionRoundsOnlyAfterAccumulatingFractionalCycles() {
+    @Test func estimateRoundsOnlyAfterAccumulatingFractionalCycles() {
         let start = date(2026, 1, 1)
 
         #expect(
-            CycleInsights.nextPrediction(
+            CycleInsights.nextEstimate(
                 startingOn: start,
                 cycleLength: 28.4,
                 onOrAfter: date(2026, 2, 1),
@@ -209,7 +209,7 @@ struct ovyluneTests {
             ) == date(2026, 2, 27)
         )
         #expect(
-            CycleInsights.nextPrediction(
+            CycleInsights.nextEstimate(
                 startingOn: start,
                 cycleLength: 28.4,
                 onOrAfter: date(2026, 2, 28),
@@ -240,7 +240,7 @@ struct ovyluneTests {
         #expect(summary.periodConfidence == .defaultEstimate)
     }
 
-    @Test func irregularCyclesReduceConfidenceDespiteHavingManyDataPoints() {
+    @Test func varyingCycleLengthsReduceConfidenceDespiteHavingManyDataPoints() {
         let offsets = [0, 20, 55, 77, 120, 146, 190]
         let entries = offsets.map { offset in
             PeriodEntry(startDate: calendar.date(byAdding: .day, value: offset, to: date(2026, 1, 1))!)
@@ -249,10 +249,10 @@ struct ovyluneTests {
         let summary = CycleInsights.summary(for: entries, calendar: calendar)
 
         #expect(summary.cycleConfidence == .low)
-        #expect(summary.isCycleIrregular)
+        #expect(summary.cycleLengthsVary)
     }
 
-    @Test func irregularPeriodLengthsReduceConfidenceDespiteHavingManyDataPoints() {
+    @Test func varyingPeriodLengthsReduceConfidenceDespiteHavingManyDataPoints() {
         let lengths = [3, 9, 4, 8, 2, 10]
         let entries = lengths.enumerated().map { index, length in
             let start = calendar.date(byAdding: .day, value: index * 28, to: date(2026, 1, 1))!
@@ -265,13 +265,13 @@ struct ovyluneTests {
         let summary = CycleInsights.summary(for: entries, calendar: calendar)
 
         #expect(summary.periodConfidence == .low)
-        #expect(summary.isPeriodLengthIrregular)
+        #expect(summary.periodLengthsVary)
     }
 
-    @Test func irregularityRequiresThreeRecentDataPoints() {
-        #expect(!CycleInsights.isIrregular([20, 40], maximumRegularRange: 9))
-        #expect(!CycleInsights.isIrregular([27, 28, 36], maximumRegularRange: 9))
-        #expect(CycleInsights.isIrregular([27, 28, 37], maximumRegularRange: 9))
+    @Test func varyingLengthsRequiresThreeRecentDataPoints() {
+        #expect(!CycleInsights.lengthsVary([20, 40], maximumRegularRange: 9))
+        #expect(!CycleInsights.lengthsVary([27, 28, 36], maximumRegularRange: 9))
+        #expect(CycleInsights.lengthsVary([27, 28, 37], maximumRegularRange: 9))
     }
 
     @Test func estimatedPeriodEndUsesAveragePeriodLength() {
@@ -299,7 +299,7 @@ struct ovyluneTests {
         )
     }
 
-    @Test func predictsOvulationFromLoggedOvulationIntervalWhenEnoughDataExists() {
+    @Test func estimatesOvulationFromLoggedOvulationIntervalWhenEnoughDataExists() {
         let ovulations = [
             OvulationEntry(startDate: date(2026, 1, 14)),
             OvulationEntry(startDate: date(2026, 2, 12)),
@@ -316,7 +316,7 @@ struct ovyluneTests {
         )
     }
 
-    @Test func predictsOvulationFourteenDaysBeforeNextPeriodWithoutEnoughOvulationData() {
+    @Test func estimatesOvulationFourteenDaysBeforeNextPeriodWithoutEnoughOvulationData() {
         let ovulations = [OvulationEntry(startDate: date(2026, 1, 14))]
 
         #expect(
@@ -328,7 +328,7 @@ struct ovyluneTests {
         )
     }
 
-    @Test func loggedOvulationMovesNextPeriodPredictionToEndOfLutealPhase() {
+    @Test func loggedOvulationMovesNextPeriodEstimateToEndOfLutealPhase() {
         let periods = [
             PeriodEntry(startDate: date(2026, 1, 1)),
             PeriodEntry(startDate: date(2026, 1, 29))
@@ -409,7 +409,7 @@ struct ovyluneTests {
         #expect(!CycleInsights.isSupersededOvulation(later, in: [earlier, later], calendar: calendar))
     }
 
-    @Test func historicalLutealPredictionDoesNotUseFutureCycles() {
+    @Test func historicalLutealEstimateDoesNotUseFutureCycles() {
         let periods = [
             PeriodEntry(startDate: date(2026, 1, 1)),
             PeriodEntry(startDate: date(2026, 1, 31)),

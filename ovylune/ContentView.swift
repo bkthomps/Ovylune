@@ -9,6 +9,16 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+private let medicalDisclaimer = "Ovylune is for personal tracking and general wellness only. It is not a medical device and does not provide medical advice. Do not use it to diagnose, treat, cure, mitigate, or prevent any disease or condition, or for contraception, pregnancy planning, or other medical decisions. Estimates may be inaccurate. Consult a qualified healthcare professional before making medical decisions."
+
+private struct MedicalDisclaimerText: View {
+    var body: some View {
+        Text(medicalDisclaimer)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+    }
+}
+
 private enum SelectableDates {
     static var range: ClosedRange<Date> {
         let calendar = Calendar.current
@@ -142,11 +152,8 @@ private struct CalendarView: View {
 
                 Section {
                     InsightGrid(summary: summary)
-
-                    Text("Predictions are estimates for personal tracking only.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: 0, trailing: 28))
+                } footer: {
+                    MedicalDisclaimerText()
                 }
             }
             .listSectionSpacing(16)
@@ -271,6 +278,8 @@ private struct TrackView: View {
 
             Section {
                 HistoryContent(settings: settings, entries: entries, ovulationEntries: ovulationEntries, deleteEntries: deleteEntries)
+            } footer: {
+                MedicalDisclaimerText()
             }
         }
         .listSectionSpacing(16)
@@ -361,6 +370,8 @@ private struct IntimacyTrackView: View {
 
             Section {
                 IntimacyHistoryContent(entries: entries, deleteEntries: deleteEntries)
+            } footer: {
+                MedicalDisclaimerText()
             }
         }
         .listSectionSpacing(16)
@@ -436,6 +447,8 @@ private struct OvulationTrackView: View {
 
             Section {
                 OvulationHistoryContent(entries: entries, periodEntries: periodEntries, deleteEntries: deleteEntries)
+            } footer: {
+                MedicalDisclaimerText()
             }
         }
         .listSectionSpacing(16)
@@ -490,9 +503,9 @@ private struct MonthPager: View {
         let periodDays: Set<Date>
         let ovulationDays: Set<Date>
         let intimacyDays: Set<Date>
-        let predictedPeriodDays: Set<Date>
-        let predictedOvulationDays: Set<Date>
-        let predictedFertileDays: Set<Date>
+        let estimatedPeriodDays: Set<Date>
+        let estimatedOvulationDays: Set<Date>
+        let estimatedFertileDays: Set<Date>
     }
 
     private struct EntryVersion: Hashable {
@@ -550,9 +563,9 @@ private struct MonthPager: View {
                     periodDays: data.periodDays,
                     ovulationDays: isOvulationTrackingEnabled ? data.ovulationDays : [],
                     intimacyDays: isIntimacyTrackingEnabled ? data.intimacyDays : [],
-                    predictedPeriodDays: data.predictedPeriodDays,
-                    predictedOvulationDays: isOvulationTrackingEnabled ? data.predictedOvulationDays : [],
-                    predictedFertileDays: isOvulationTrackingEnabled ? data.predictedFertileDays : [],
+                    estimatedPeriodDays: data.estimatedPeriodDays,
+                    estimatedOvulationDays: isOvulationTrackingEnabled ? data.estimatedOvulationDays : [],
+                    estimatedFertileDays: isOvulationTrackingEnabled ? data.estimatedFertileDays : [],
                     isOvulationTrackingEnabled: isOvulationTrackingEnabled,
                     isIntimacyTrackingEnabled: isIntimacyTrackingEnabled,
                     firstWeekday: firstWeekday
@@ -606,14 +619,14 @@ private struct MonthPager: View {
 
     private func makeMonthData(for month: Date) -> MonthData {
         let window = monthWindow(for: month)
-        let ovulationPrediction = predictedOvulation(within: window)
+        let ovulationEstimate = estimatedOvulation(within: window)
         return MonthData(
             periodDays: periodDays(within: window),
             ovulationDays: ovulationDays(within: window),
             intimacyDays: intimacyDays(within: window),
-            predictedPeriodDays: predictedPeriodDays(within: window),
-            predictedOvulationDays: ovulationPrediction.ovulationDays,
-            predictedFertileDays: ovulationPrediction.fertileDays
+            estimatedPeriodDays: estimatedPeriodDays(within: window),
+            estimatedOvulationDays: ovulationEstimate.ovulationDays,
+            estimatedFertileDays: ovulationEstimate.fertileDays
         )
     }
 
@@ -656,7 +669,7 @@ private struct MonthPager: View {
         })
     }
 
-    private func predictedPeriodDays(within window: DateInterval) -> Set<Date> {
+    private func estimatedPeriodDays(within window: DateInterval) -> Set<Date> {
         let precisePeriodLength = CycleInsights.preciseAveragePeriodLength(from: entries, calendar: calendar)
             ?? Double(CycleInsights.fallbackPeriodLength)
         let periodLength = max(Int(precisePeriodLength.rounded()), 1)
@@ -667,7 +680,7 @@ private struct MonthPager: View {
         )
         var days: Set<Date> = []
 
-        if var predictedStart = CycleInsights.nextPeriodStart(
+        if var estimatedStart = CycleInsights.nextPeriodStart(
                from: entries,
                ovulationEntries: ovulationEntries,
                calendar: calendar
@@ -677,34 +690,34 @@ private struct MonthPager: View {
                 value: -(periodLength - 1),
                 to: window.start
             ) ?? window.start
-            let predictionAnchor = predictedStart
-            predictedStart = firstOccurrence(
-                startingOn: predictionAnchor,
+            let estimateAnchor = estimatedStart
+            estimatedStart = firstOccurrence(
+                startingOn: estimateAnchor,
                 interval: cycleLength,
                 onOrAfter: earliestOverlappingStart
             )
 
-            while predictedStart < window.end {
+            while estimatedStart < window.end {
                 days.formUnion(
-                    predictedDays(
-                        startingOn: predictedStart,
+                    estimatedDays(
+                        startingOn: estimatedStart,
                         length: periodLength,
                         within: window
                     )
                 )
 
-                guard let dayAfterPrediction = calendar.date(byAdding: .day, value: 1, to: predictedStart) else { break }
-                predictedStart = firstOccurrence(
-                    startingOn: predictionAnchor,
+                guard let dayAfterEstimate = calendar.date(byAdding: .day, value: 1, to: estimatedStart) else { break }
+                estimatedStart = firstOccurrence(
+                    startingOn: estimateAnchor,
                     interval: cycleLength,
-                    onOrAfter: dayAfterPrediction
+                    onOrAfter: dayAfterEstimate
                 )
             }
         }
 
         if let ongoingEntry = entries.first(where: { $0.endDate == nil }) {
             days.formUnion(
-                predictedDays(
+                estimatedDays(
                     startingOn: ongoingEntry.startDate,
                     length: periodLength,
                     within: window
@@ -730,7 +743,7 @@ private struct MonthPager: View {
         })
     }
 
-    private func predictedOvulation(
+    private func estimatedOvulation(
         within window: DateInterval
     ) -> (ovulationDays: Set<Date>, fertileDays: Set<Date>) {
         let cycleLength = max(
@@ -751,20 +764,20 @@ private struct MonthPager: View {
             from: entries,
             ovulationEntries: ovulationEntries,
             calendar: calendar
-        ) ?? CycleInsights.nextPrediction(
+        ) ?? CycleInsights.nextEstimate(
             startingOn: lastLoggedPeriod,
             cycleLength: cycleLength,
             onOrAfter: calendar.date(byAdding: .day, value: 1, to: lastLoggedPeriod)!,
             calendar: calendar
         )
 
-        let predictionAnchor = nextPeriod
+        let estimateAnchor = nextPeriod
 
         while nextPeriod <= window.end.addingTimeInterval(TimeInterval(cycleLength.rounded() * 86_400)) {
             cycleStarts.append(nextPeriod)
             guard let followingDay = calendar.date(byAdding: .day, value: 1, to: nextPeriod) else { break }
-            nextPeriod = CycleInsights.nextPrediction(
-                startingOn: predictionAnchor,
+            nextPeriod = CycleInsights.nextEstimate(
+                startingOn: estimateAnchor,
                 cycleLength: cycleLength,
                 onOrAfter: followingDay,
                 calendar: calendar
@@ -790,7 +803,7 @@ private struct MonthPager: View {
                     return date >= cycleStart && date < cycleEnd
                 }
                 .max { $0.startDate < $1.startDate }
-            let predictedEvent = learnedLutealLength.flatMap {
+            let estimatedEvent = learnedLutealLength.flatMap {
                 calendar.date(byAdding: .day, value: Int((-$0).rounded()), to: cycleEnd)
             } ?? learnedOvulationInterval.flatMap {
                 calendar.date(byAdding: .day, value: Int($0.rounded()), to: cycleStart)
@@ -800,7 +813,7 @@ private struct MonthPager: View {
                 to: cycleEnd
             )
             guard let ovulationEnd = logged.map({ calendar.startOfDay(for: $0.endDate ?? $0.startDate) })
-                    ?? predictedEvent else { continue }
+                    ?? estimatedEvent else { continue }
             let ovulationStart = logged.map { calendar.startOfDay(for: $0.startDate) }
                 ?? ovulationEnd
 
@@ -829,7 +842,7 @@ private struct MonthPager: View {
         interval: Double,
         onOrAfter targetDate: Date
     ) -> Date {
-        CycleInsights.nextPrediction(
+        CycleInsights.nextEstimate(
             startingOn: startDate,
             cycleLength: interval,
             onOrAfter: targetDate,
@@ -837,7 +850,7 @@ private struct MonthPager: View {
         )
     }
 
-    private func predictedDays(
+    private func estimatedDays(
         startingOn startDate: Date,
         length: Int,
         within window: DateInterval
@@ -886,9 +899,9 @@ private struct MonthCalendar: View {
     let periodDays: Set<Date>
     let ovulationDays: Set<Date>
     let intimacyDays: Set<Date>
-    let predictedPeriodDays: Set<Date>
-    let predictedOvulationDays: Set<Date>
-    let predictedFertileDays: Set<Date>
+    let estimatedPeriodDays: Set<Date>
+    let estimatedOvulationDays: Set<Date>
+    let estimatedFertileDays: Set<Date>
     let isOvulationTrackingEnabled: Bool
     let isIntimacyTrackingEnabled: Bool
     let firstWeekday: Int
@@ -921,9 +934,9 @@ private struct MonthCalendar: View {
                         hasPeriod: date.map(periodDays.contains) ?? false,
                         hasOvulation: date.map(ovulationDays.contains) ?? false,
                         hasIntimacy: date.map(intimacyDays.contains) ?? false,
-                        isPredictedPeriod: date.map(predictedPeriodDays.contains) ?? false,
-                        isPredictedOvulation: date.map(predictedOvulationDays.contains) ?? false,
-                        isPredictedFertile: date.map(predictedFertileDays.contains) ?? false
+                        isEstimatedPeriod: date.map(estimatedPeriodDays.contains) ?? false,
+                        isEstimatedOvulation: date.map(estimatedOvulationDays.contains) ?? false,
+                        isEstimatedFertile: date.map(estimatedFertileDays.contains) ?? false
                     )
                 }
             }
@@ -1004,20 +1017,20 @@ private struct DayCell: View {
     let hasPeriod: Bool
     let hasOvulation: Bool
     let hasIntimacy: Bool
-    let isPredictedPeriod: Bool
-    let isPredictedOvulation: Bool
-    let isPredictedFertile: Bool
+    let isEstimatedPeriod: Bool
+    let isEstimatedOvulation: Bool
+    let isEstimatedFertile: Bool
 
     @State private var isShowingStatus = false
 
     private let calendar = Calendar.current
 
     private var isPeriodDay: Bool {
-        hasPeriod || isPredictedPeriod
+        hasPeriod || isEstimatedPeriod
     }
 
     private var isHighlightedDay: Bool {
-        isPeriodDay || isPredictedOvulation || isPredictedFertile
+        isPeriodDay || isEstimatedOvulation || isEstimatedFertile
     }
 
     var body: some View {
@@ -1034,10 +1047,10 @@ private struct DayCell: View {
                 if isPeriodDay {
                     Circle()
                         .fill(.pink.opacity(0.18))
-                } else if isPredictedOvulation {
+                } else if isEstimatedOvulation {
                     Circle()
                         .fill(.purple.opacity(0.16))
-                } else if isPredictedFertile {
+                } else if isEstimatedFertile {
                     Circle()
                         .fill(.blue.opacity(0.14))
                 }
@@ -1046,8 +1059,8 @@ private struct DayCell: View {
                     .font(.subheadline.weight(isHighlightedDay ? .semibold : .regular))
                     .foregroundStyle(
                         isPeriodDay ? .pink
-                            : isPredictedOvulation ? .purple
-                            : isPredictedFertile ? .blue
+                            : isEstimatedOvulation ? .purple
+                            : isEstimatedFertile ? .blue
                             : .primary
                     )
                     .lineLimit(1)
@@ -1101,22 +1114,22 @@ private struct DayCell: View {
 
         if hasPeriod {
             labels.append("Period")
-        } else if isPredictedPeriod {
-            labels.append("Period Predicted")
+        } else if isEstimatedPeriod {
+            labels.append("Period Estimate")
         }
 
         if hasOvulation {
             labels.append("Ovulation")
-        } else if isPredictedOvulation {
-            labels.append("Ovulation Predicted")
+        } else if isEstimatedOvulation {
+            labels.append("Ovulation Estimate")
         }
 
         if hasIntimacy {
             labels.append("Intimacy")
         }
 
-        if isPredictedFertile {
-            labels.append("Fertile Day Predicted")
+        if isEstimatedFertile {
+            labels.append("Estimate Fertile Day")
         }
 
         return labels
@@ -1136,9 +1149,9 @@ private struct DayCell: View {
             hasIntimacy ? "intimacy" : nil
         ].compactMap { $0 }
         if !logged.isEmpty { return "\(formatted), \(logged.joined(separator: ", ")) logged" }
-        if isPredictedPeriod { return "\(formatted), period predicted" }
-        if isPredictedOvulation { return "\(formatted), ovulation predicted" }
-        if isPredictedFertile { return "\(formatted), fertile window predicted" }
+        if isEstimatedPeriod { return "\(formatted), period estimate" }
+        if isEstimatedOvulation { return "\(formatted), ovulation estimate" }
+        if isEstimatedFertile { return "\(formatted), estimated fertile day" }
         return formatted
     }
 }
@@ -1152,13 +1165,13 @@ private struct InsightGrid: View {
                 InsightTile(
                     title: "Cycle",
                     value: summary.averageCycleLength.map { "\($0) days" } ?? "28 days",
-                    detail: summary.isCycleIrregular ? "⚠️ Irregular" : summary.cycleConfidence.label
+                    detail: summary.cycleLengthsVary ? "Cycle lengths vary" : summary.cycleConfidence.label
                 )
 
                 InsightTile(
                     title: "Period",
                     value: summary.averagePeriodLength.map { "\($0) days" } ?? "5 days",
-                    detail: summary.isPeriodLengthIrregular ? "⚠️ Irregular" : summary.periodConfidence.label
+                    detail: summary.periodLengthsVary ? "Period lengths vary" : summary.periodConfidence.label
                 )
             }
 
@@ -1186,7 +1199,7 @@ private struct InsightGrid: View {
 
     private var nextPeriodRange: String {
         guard let initialStart = summary.nextPeriodStart else { return "None" }
-        let start = CycleInsights.nextPrediction(
+        let start = CycleInsights.nextEstimate(
             startingOn: initialStart,
             cycleLength: summary.averageCycleLength ?? CycleInsights.fallbackCycleLength,
             onOrAfter: Date()
@@ -1421,7 +1434,7 @@ private struct OvulationEntryRow: View {
 
             if isSuperseded {
                 Label(
-                    "A later ovulation is logged this cycle; this entry is not used for predictions.",
+                    "A later ovulation is logged this cycle; this entry is not used for estimates.",
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption)
@@ -1756,15 +1769,15 @@ private struct SettingsView: View {
                     .onDelete(perform: deleteSymptoms)
                 }
 
-                Section("Privacy") {
+                Section {
                     Label("No account required", systemImage: "person.crop.circle.badge.xmark")
                     Label("No data is uploaded", systemImage: "icloud.slash")
                     Label("No analytics collected", systemImage: "chart.bar.xaxis")
                     Label("No advertising trackers", systemImage: "hand.raised")
-
-                    Text("Not a medical device. Do not use for diagnosis, treatment, contraception, or other medical decisions.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    MedicalDisclaimerText()
                 }
             }
             .listSectionSpacing(16)

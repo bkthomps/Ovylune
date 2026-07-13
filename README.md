@@ -13,7 +13,7 @@ Ovylune is a private, local-first period and cycle tracker for iPhone and iPad. 
 - Swipe through a monthly calendar showing logged periods, ovulation, and intimacy.
 - See estimated upcoming periods, ovulation days, and fertile windows at a glance.
 - Review average cycle and period lengths, the most recent period, and the next estimated period.
-- Understand prediction quality through confidence levels and irregular-cycle indicators.
+- Understand estimate quality through history and cycle-length variation indicators.
 - Choose any day of the week as the calendar's starting day.
 
 ### Period tracking
@@ -45,11 +45,11 @@ Ovylune is a private, local-first period and cycle tracker for iPhone and iPad. 
 - Use the app without an account, network upload, analytics, or advertising trackers.
 - Permanently clear ovulation or intimacy history when its tracking option is disabled.
 
-## How predictions work
+## How estimates work
 
-Ovylune starts with general 28-day cycle and 5-day period estimates, then adapts to the history recorded on the device. Recent observations are weighted more heavily, and robust estimates reduce the effect of isolated unusual entries. Confidence and irregularity indicators make the limits of each estimate visible.
+Ovylune starts with general 28-day cycle and 5-day period estimates, then adapts to the history recorded on the device. Recent observations are weighted more heavily, and robust estimates reduce the effect of isolated unusual entries. History and length-variation indicators make the limits of each estimate visible.
 
-Predictions are for personal tracking only. They may not accurately predict periods, ovulation, or fertility.
+Estimates are for personal tracking only. They may not accurately identify future periods, ovulation, or fertility.
 
 ## Privacy
 
@@ -74,7 +74,7 @@ xcodebuild test -project ovylune.xcodeproj -scheme ovylune -destination 'platfor
 
 ## Disclaimer
 
-Ovylune is not a medical device. Do not use it for diagnosis, treatment, contraception, or other medical decisions. Consult a qualified healthcare professional for medical advice.
+Ovylune is for personal tracking and general wellness only. It is not a medical device and does not provide medical advice. Do not use it to diagnose, treat, cure, mitigate, or prevent any disease or condition, or for contraception, pregnancy planning, or other medical decisions. Estimates may be inaccurate. Consult a qualified healthcare professional before making medical decisions.
 
 ## License
 

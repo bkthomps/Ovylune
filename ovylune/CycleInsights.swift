@@ -12,8 +12,8 @@ struct CycleSummary {
     let averagePeriodLength: Int?
     let cycleConfidence: EstimateConfidence
     let periodConfidence: EstimateConfidence
-    let isCycleIrregular: Bool
-    let isPeriodLengthIrregular: Bool
+    let cycleLengthsVary: Bool
+    let periodLengthsVary: Bool
     let nextPeriodStart: Date?
     let lastPeriodStart: Date?
     let lastPeriodEnd: Date?
@@ -28,9 +28,9 @@ enum EstimateConfidence: Equatable {
     var label: String {
         switch self {
         case .defaultEstimate: "Default estimate"
-        case .low: "Low Confidence"
-        case .medium: "Medium Confidence"
-        case .high: "High Confidence"
+        case .low: "Little history available"
+        case .medium: "Little history available"
+        case .high: "Estimate"
         }
     }
 }
@@ -69,11 +69,11 @@ enum CycleInsights {
             averagePeriodLength: averagePeriodLength,
             cycleConfidence: confidence(for: averageCycleLength, dataPoints: allCycleDataPoints, mediumVariation: 2, lowVariation: 5),
             periodConfidence: confidence(for: averagePeriodLength, dataPoints: allPeriodDataPoints, mediumVariation: 1, lowVariation: 2),
-            isCycleIrregular: isIrregular(
+            cycleLengthsVary: lengthsVary(
                 cycleDataPoints(from: recentEntries, calendar: calendar),
                 maximumRegularRange: 9
             ),
-            isPeriodLengthIrregular: isIrregular(
+            periodLengthsVary: lengthsVary(
                 periodDataPoints(from: recentEntries, calendar: calendar),
                 maximumRegularRange: 3
             ),
@@ -83,7 +83,7 @@ enum CycleInsights {
         )
     }
 
-    static func isIrregular(_ dataPoints: [Int], maximumRegularRange: Int) -> Bool {
+    static func lengthsVary(_ dataPoints: [Int], maximumRegularRange: Int) -> Bool {
         guard dataPoints.count >= 3,
               let shortest = dataPoints.min(),
               let longest = dataPoints.max() else {
@@ -218,7 +218,7 @@ enum CycleInsights {
     }
 
     /// Uses calendar-time decay and a weighted median so isolated bad entries do
-    /// not pull predictions far away from the user's usual pattern. Personal
+    /// not pull estimates far away from the user's usual pattern. Personal
     /// history gradually replaces the population prior over the first six
     /// reliable observations.
     private static func personalizedWeightedMedian(
@@ -466,13 +466,13 @@ enum CycleInsights {
         return addingRoundedDays(periodLength - 1, to: startDate, calendar: calendar) ?? startDate
     }
 
-    static func nextPrediction(
+    static func nextEstimate(
         startingOn startDate: Date,
         cycleLength: Int,
         onOrAfter targetDate: Date,
         calendar: Calendar = .current
     ) -> Date {
-        nextPrediction(
+        nextEstimate(
             startingOn: startDate,
             cycleLength: Double(cycleLength),
             onOrAfter: targetDate,
@@ -480,7 +480,7 @@ enum CycleInsights {
         )
     }
 
-    static func nextPrediction(
+    static func nextEstimate(
         startingOn startDate: Date,
         cycleLength: Double,
         onOrAfter targetDate: Date,
