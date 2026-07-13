@@ -55,7 +55,7 @@ Predictions are for personal tracking only. They may not accurately predict peri
 
 Ovylune has no accounts, servers, cloud synchronization, analytics, or advertising trackers. Personal data stays in the app's local storage and is not uploaded or shared by Ovylune.
 
-Because there is no cloud backup, deleting the app's data or losing access to the device may permanently erase the recorded history.
+Ovylune explicitly excludes its local SwiftData store and database sidecar files from device backups. Deleting the app's data or losing access to the device may therefore permanently erase the recorded history.
 
 ## Development
 
