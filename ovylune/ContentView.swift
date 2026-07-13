@@ -330,15 +330,12 @@ private struct IntimacyTrackView: View {
     let entries: [IntimacyEntry]
 
     @State private var date = Date()
-    @State private var trackPregnancy = true
     @State private var notes = ""
 
     var body: some View {
         List {
             Section {
                 DatePicker("On", selection: $date, in: SelectableDates.range, displayedComponents: .date)
-
-                Toggle("Mark as Pregnancy Risk", isOn: $trackPregnancy)
 
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(2...5)
@@ -360,11 +357,9 @@ private struct IntimacyTrackView: View {
     private func addEntry() {
         modelContext.insert(IntimacyEntry(
             date: date,
-            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-            trackPregnancy: trackPregnancy
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
         ))
         date = Date()
-        trackPregnancy = true
         notes = ""
     }
 
@@ -506,7 +501,6 @@ private struct MonthPager: View {
 
     private struct IntimacyVersion: Hashable {
         let date: Date
-        let trackPregnancy: Bool
     }
 
     private struct MonthKey: Hashable {
@@ -590,7 +584,7 @@ private struct MonthPager: View {
                 OvulationVersion(startDate: $0.startDate, endDate: $0.endDate)
             },
             intimacies: intimacyEntries.map {
-                IntimacyVersion(date: $0.date, trackPregnancy: $0.trackPregnancy)
+                IntimacyVersion(date: $0.date)
             }
         )
     }
@@ -697,7 +691,6 @@ private struct MonthPager: View {
 
     private func intimacyDays(within window: DateInterval) -> Set<Date> {
         Set(intimacyEntries.compactMap { entry in
-            guard entry.trackPregnancy else { return nil }
             let day = calendar.startOfDay(for: entry.date)
             return window.contains(day) ? day : nil
         })
@@ -1306,14 +1299,11 @@ private struct IntimacyHistoryContent: View {
         } else {
             ForEach(entries) { entry in
                 NavigationLink {
-                    IntimacyEntryDetailView(entry: entry, entries: entries)
+                    IntimacyEntryDetailView(entry: entry)
                 } label: {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(entry.date.formatted(.dateTime.month(.abbreviated).day().year()))
                             .font(.headline)
-                        Text(entry.trackPregnancy ? "Pregnancy risk" : "No pregnancy risk")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
                         if !entry.notes.isEmpty {
                             Text(entry.notes)
                                 .font(.subheadline)
@@ -1332,16 +1322,12 @@ private struct IntimacyHistoryContent: View {
 private struct IntimacyEntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var entry: IntimacyEntry
-    let entries: [IntimacyEntry]
     @State private var date: Date
-    @State private var trackPregnancy: Bool
     @State private var notes: String
 
-    init(entry: IntimacyEntry, entries: [IntimacyEntry]) {
+    init(entry: IntimacyEntry) {
         self.entry = entry
-        self.entries = entries
         _date = State(initialValue: entry.date)
-        _trackPregnancy = State(initialValue: entry.trackPregnancy)
         _notes = State(initialValue: entry.notes)
     }
 
@@ -1349,7 +1335,6 @@ private struct IntimacyEntryDetailView: View {
         Form {
             Section("Date") {
                 DatePicker("On", selection: $date, in: SelectableDates.range, displayedComponents: .date)
-                Toggle("Mark as Pregnancy Risk", isOn: $trackPregnancy)
             }
 
             Section("Notes") {
@@ -1369,7 +1354,6 @@ private struct IntimacyEntryDetailView: View {
 
     private func save() {
         entry.date = date
-        entry.trackPregnancy = trackPregnancy
         entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         dismiss()
     }
