@@ -1776,6 +1776,21 @@ private struct SettingsView: View {
                     Label("No advertising trackers", systemImage: "hand.raised")
                 } header: {
                     Text("Privacy")
+                }
+
+                Section {
+                    Text("Ovylune starts with general estimates of a 28-day cycle and a 5-day period. As you record your history, these estimates adapt to your patterns.")
+
+                    Label("Recent observations are weighted more heavily.", systemImage: "clock.arrow.circlepath")
+                    Label("Robust estimates reduce the effect of isolated unusual entries.", systemImage: "waveform.path.ecg")
+                    Label("History and length-variation indicators help show the limits of each estimate.", systemImage: "chart.line.uptrend.xyaxis")
+
+                    Label(
+                        "Estimates may not accurately identify future periods, ovulation, or fertile days.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                } header: {
+                    Text("How Estimates Work")
                 } footer: {
                     MedicalDisclaimerText()
                 }
