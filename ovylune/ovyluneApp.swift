@@ -25,6 +25,11 @@ private enum LocalDataStore {
             url: applicationSupportDirectory.appending(path: storeFileName)
         )
         let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = ModelContext(container)
+        if try context.fetchCount(FetchDescriptor<AppSettings>()) == 0 {
+            context.insert(AppSettings())
+            try context.save()
+        }
 
         // The directory exclusion covers sidecars created later. Mark files that
         // already exist as well so the backup policy is explicit on each one.
@@ -50,6 +55,7 @@ private enum LocalDataStore {
 struct ovyluneApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
+            AppSettings.self,
             PeriodEntry.self,
             OvulationEntry.self,
             IntimacyEntry.self,

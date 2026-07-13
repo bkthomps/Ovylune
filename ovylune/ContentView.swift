@@ -22,6 +22,7 @@ private enum SelectableDates {
 }
 
 struct ContentView: View {
+    @Query private var appSettings: [AppSettings]
     @Query(sort: \PeriodEntry.startDate, order: .reverse) private var entries: [PeriodEntry]
     @Query(sort: \OvulationEntry.startDate, order: .reverse) private var ovulationEntries: [OvulationEntry]
     @Query(sort: \IntimacyEntry.date, order: .reverse) private var intimacyEntries: [IntimacyEntry]
@@ -31,27 +32,30 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView {
-            CalendarView(entries: entries, ovulationEntries: ovulationEntries, intimacyEntries: intimacyEntries)
-                .tabItem {
-                    Label("Calendar", systemImage: "calendar")
-                }
+        if let settings = appSettings.first {
+            TabView {
+                CalendarView(settings: settings, entries: entries, ovulationEntries: ovulationEntries, intimacyEntries: intimacyEntries)
+                    .tabItem {
+                        Label("Calendar", systemImage: "calendar")
+                    }
 
-            TrackView(entries: entries, ovulationEntries: ovulationEntries, intimacyEntries: intimacyEntries)
-                .tabItem {
-                    Label("Track", systemImage: "plus.circle")
-                }
+                TrackView(settings: settings, entries: entries, ovulationEntries: ovulationEntries, intimacyEntries: intimacyEntries)
+                    .tabItem {
+                        Label("Track", systemImage: "plus.circle")
+                    }
 
-            SettingsView(
-                entries: entries,
-                ovulationEntries: ovulationEntries,
-                intimacyEntries: intimacyEntries
-            )
-                .tabItem {
-                    Label("Settings", systemImage: "gearshape")
-                }
+                SettingsView(
+                    settings: settings,
+                    entries: entries,
+                    ovulationEntries: ovulationEntries,
+                    intimacyEntries: intimacyEntries
+                )
+                    .tabItem {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+            }
+            .background(KeyboardDismissalView())
         }
-        .background(KeyboardDismissalView())
     }
 }
 
@@ -101,12 +105,10 @@ private final class KeyboardDismissalUIView: UIView, UIGestureRecognizerDelegate
 }
 
 private struct CalendarView: View {
+    let settings: AppSettings
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     let intimacyEntries: [IntimacyEntry]
-    @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
-    @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
-    @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
 
     private var summary: CycleSummary {
         CycleInsights.summary(for: entries)
@@ -120,9 +122,9 @@ private struct CalendarView: View {
                         entries: entries,
                         ovulationEntries: ovulationEntries,
                         intimacyEntries: intimacyEntries,
-                        isOvulationTrackingEnabled: isOvulationTrackingEnabled,
-                        isIntimacyTrackingEnabled: isIntimacyTrackingEnabled,
-                        firstWeekday: firstWeekday
+                        isOvulationTrackingEnabled: settings.isOvulationTrackingEnabled,
+                        isIntimacyTrackingEnabled: settings.isIntimacyTrackingEnabled,
+                        firstWeekday: settings.firstWeekday
                     )
                 }
 
@@ -136,27 +138,25 @@ private struct CalendarView: View {
                 }
             }
             .listSectionSpacing(16)
-            .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
+            .ongoingPeriodEditor(settings: settings, entries: entries, ovulationEntries: ovulationEntries)
         }
     }
 }
 
 private struct TrackView: View {
     @Environment(\.modelContext) private var modelContext
+    let settings: AppSettings
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     let intimacyEntries: [IntimacyEntry]
 
     @State private var trackingMode = TrackingMode.period
-    @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
-    @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
 
     @State private var startDate = Date()
     @State private var endDate = Date()
     @State private var hasEndDate = true
     @State private var selectedSymptoms: Set<String> = []
     @State private var notes = ""
-    @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
 
     var body: some View {
         NavigationStack {
@@ -170,7 +170,7 @@ private struct TrackView: View {
                     IntimacyTrackView(entries: intimacyEntries)
                 }
             }
-            .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
+            .ongoingPeriodEditor(settings: settings, entries: entries, ovulationEntries: ovulationEntries)
             .toolbar {
                 if availableTrackingModes.count > 1 {
                     ToolbarItem(placement: .topBarLeading) {
@@ -187,12 +187,12 @@ private struct TrackView: View {
                     }
                 }
             }
-            .onChange(of: isOvulationTrackingEnabled) { _, isEnabled in
+            .onChange(of: settings.isOvulationTrackingEnabled) { _, isEnabled in
                 if !isEnabled && trackingMode == .ovulation {
                     trackingMode = .period
                 }
             }
-            .onChange(of: isIntimacyTrackingEnabled) { _, isEnabled in
+            .onChange(of: settings.isIntimacyTrackingEnabled) { _, isEnabled in
                 if !isEnabled && trackingMode == .intimacy {
                     trackingMode = .period
                 }
@@ -202,8 +202,8 @@ private struct TrackView: View {
 
     private var availableTrackingModes: [TrackingMode] {
         TrackingMode.allCases.filter { mode in
-            (isOvulationTrackingEnabled || mode != .ovulation)
-                && (isIntimacyTrackingEnabled || mode != .intimacy)
+            (settings.isOvulationTrackingEnabled || mode != .ovulation)
+                && (settings.isIntimacyTrackingEnabled || mode != .intimacy)
         }
     }
 
@@ -258,7 +258,7 @@ private struct TrackView: View {
             }
 
             Section {
-                HistoryContent(entries: entries, ovulationEntries: ovulationEntries, deleteEntries: deleteEntries)
+                HistoryContent(settings: settings, entries: entries, ovulationEntries: ovulationEntries, deleteEntries: deleteEntries)
             }
         }
         .listSectionSpacing(16)
@@ -269,7 +269,7 @@ private struct TrackView: View {
     }
 
     private var availableSymptoms: [String] {
-        SymptomCatalog.decode(storedSymptoms)
+        settings.symptoms
     }
 
     private var overlapsExistingPeriod: Bool {
@@ -1233,6 +1233,7 @@ private struct SymptomPicker: View {
 }
 
 private struct HistoryContent: View {
+    let settings: AppSettings
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     let deleteEntries: (IndexSet) -> Void
@@ -1247,7 +1248,7 @@ private struct HistoryContent: View {
         } else {
             ForEach(entries) { entry in
                 NavigationLink {
-                    EntryDetailView(entry: entry, entries: entries, ovulationEntries: ovulationEntries)
+                    EntryDetailView(settings: settings, entry: entry, entries: entries, ovulationEntries: ovulationEntries)
                 } label: {
                     EntryRow(entry: entry)
                 }
@@ -1562,6 +1563,7 @@ private struct EntryRow: View {
 
 private struct EntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    let settings: AppSettings
     @Bindable var entry: PeriodEntry
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
@@ -1570,9 +1572,9 @@ private struct EntryDetailView: View {
     @State private var selectedSymptoms: Set<String>
     @State private var hasEndDate: Bool
     @State private var notes: String
-    @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
 
-    init(entry: PeriodEntry, entries: [PeriodEntry], ovulationEntries: [OvulationEntry]) {
+    init(settings: AppSettings, entry: PeriodEntry, entries: [PeriodEntry], ovulationEntries: [OvulationEntry]) {
+        self.settings = settings
         self.entry = entry
         self.entries = entries
         self.ovulationEntries = ovulationEntries
@@ -1646,7 +1648,7 @@ private struct EntryDetailView: View {
     }
 
     private var availableSymptoms: [String] {
-        SymptomCatalog.decode(storedSymptoms)
+        settings.symptoms
     }
 
     private var overlapsExistingPeriod: Bool {
@@ -1678,13 +1680,10 @@ private struct EntryDetailView: View {
 
 private struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Bindable var settings: AppSettings
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     let intimacyEntries: [IntimacyEntry]
-    @AppStorage(SymptomCatalog.storageKey) private var storedSymptoms = SymptomCatalog.defaultEncoded
-    @AppStorage(OvulationTracking.storageKey) private var isOvulationTrackingEnabled = true
-    @AppStorage(IntimacyTracking.storageKey) private var isIntimacyTrackingEnabled = true
-    @AppStorage(WeekStart.storageKey) private var firstWeekday = WeekStart.defaultValue
     @State private var newSymptom = ""
     @State private var isShowingDisableWarning = false
     @State private var isShowingIntimacyDisableWarning = false
@@ -1694,7 +1693,7 @@ private struct SettingsView: View {
         NavigationStack {
             List {
                 Section {
-                    Picker("Start Day of Week", selection: $firstWeekday) {
+                    Picker("Start Day of Week", selection: $settings.firstWeekday) {
                         ForEach(WeekStart.values, id: \.self) { weekday in
                             Text(WeekStart.name(for: weekday)).tag(weekday)
                         }
@@ -1735,7 +1734,7 @@ private struct SettingsView: View {
                 }
             }
             .listSectionSpacing(16)
-            .ongoingPeriodEditor(entries: entries, ovulationEntries: ovulationEntries)
+            .ongoingPeriodEditor(settings: settings, entries: entries, ovulationEntries: ovulationEntries)
             .alert("Disable Ovulation Tracking?", isPresented: $isShowingDisableWarning) {
                 Button("Cancel", role: .cancel) {}
                 Button("Disable and Delete History", role: .destructive) {
@@ -1765,12 +1764,12 @@ private struct SettingsView: View {
 
     private var ovulationTrackingBinding: Binding<Bool> {
         Binding(
-            get: { isOvulationTrackingEnabled },
+            get: { settings.isOvulationTrackingEnabled },
             set: { newValue in
                 if newValue {
-                    isOvulationTrackingEnabled = true
+                    settings.isOvulationTrackingEnabled = true
                 } else if ovulationEntries.isEmpty {
-                    isOvulationTrackingEnabled = false
+                    settings.isOvulationTrackingEnabled = false
                 } else {
                     isShowingDisableWarning = true
                 }
@@ -1780,12 +1779,12 @@ private struct SettingsView: View {
 
     private var intimacyTrackingBinding: Binding<Bool> {
         Binding(
-            get: { isIntimacyTrackingEnabled },
+            get: { settings.isIntimacyTrackingEnabled },
             set: { newValue in
                 if newValue {
-                    isIntimacyTrackingEnabled = true
+                    settings.isIntimacyTrackingEnabled = true
                 } else if intimacyEntries.isEmpty {
-                    isIntimacyTrackingEnabled = false
+                    settings.isIntimacyTrackingEnabled = false
                 } else {
                     isShowingIntimacyDisableWarning = true
                 }
@@ -1797,14 +1796,14 @@ private struct SettingsView: View {
         for entry in ovulationEntries {
             modelContext.delete(entry)
         }
-        isOvulationTrackingEnabled = false
+        settings.isOvulationTrackingEnabled = false
     }
 
     private func disableIntimacyTracking() {
         for entry in intimacyEntries {
             modelContext.delete(entry)
         }
-        isIntimacyTrackingEnabled = false
+        settings.isIntimacyTrackingEnabled = false
     }
 
     private func deleteAllData() {
@@ -1818,15 +1817,12 @@ private struct SettingsView: View {
             modelContext.delete(entry)
         }
 
-        storedSymptoms = SymptomCatalog.defaultEncoded
-        isOvulationTrackingEnabled = true
-        isIntimacyTrackingEnabled = true
-        firstWeekday = WeekStart.defaultValue
+        settings.reset()
         newSymptom = ""
     }
 
     private var symptoms: [String] {
-        SymptomCatalog.decode(storedSymptoms)
+        settings.symptoms
     }
 
     private var trimmedNewSymptom: String {
@@ -1841,28 +1837,18 @@ private struct SettingsView: View {
 
     private func addSymptom() {
         guard canAddSymptom else { return }
-        storedSymptoms = SymptomCatalog.encode(symptoms + [trimmedNewSymptom])
+        settings.symptoms = symptoms + [trimmedNewSymptom]
         newSymptom = ""
     }
 
     private func deleteSymptoms(at offsets: IndexSet) {
         var updatedSymptoms = symptoms
         updatedSymptoms.remove(atOffsets: offsets)
-        storedSymptoms = SymptomCatalog.encode(updatedSymptoms)
+        settings.symptoms = updatedSymptoms
     }
 }
 
-private enum OvulationTracking {
-    static let storageKey = "isOvulationTrackingEnabled"
-}
-
-private enum IntimacyTracking {
-    static let storageKey = "isIntimacyTrackingEnabled"
-}
-
 private enum WeekStart {
-    static let storageKey = "firstWeekday"
-    static let defaultValue = 1
     static let values = Array(1...7)
 
     static func name(for weekday: Int, calendar: Calendar = .current) -> String {
@@ -1870,35 +1856,14 @@ private enum WeekStart {
     }
 }
 
-private enum SymptomCatalog {
-    static let storageKey = "availableSymptoms"
-    static let defaults = [
-        "Cramps", "Headache", "Fatigue", "Bloating", "Tenderness", "Mood shifts"
-    ]
-    static let defaultEncoded = encode(defaults)
-
-    static func encode(_ symptoms: [String]) -> String {
-        guard let data = try? JSONEncoder().encode(symptoms),
-              let encoded = String(data: data, encoding: .utf8)
-        else { return "[]" }
-        return encoded
-    }
-
-    static func decode(_ encoded: String) -> [String] {
-        guard let data = encoded.data(using: .utf8),
-              let symptoms = try? JSONDecoder().decode([String].self, from: data)
-        else { return defaults }
-        return symptoms
-    }
-}
-
 private extension View {
-    func ongoingPeriodEditor(entries: [PeriodEntry], ovulationEntries: [OvulationEntry]) -> some View {
-        modifier(OngoingPeriodEditorModifier(entries: entries, ovulationEntries: ovulationEntries))
+    func ongoingPeriodEditor(settings: AppSettings, entries: [PeriodEntry], ovulationEntries: [OvulationEntry]) -> some View {
+        modifier(OngoingPeriodEditorModifier(settings: settings, entries: entries, ovulationEntries: ovulationEntries))
     }
 }
 
 private struct OngoingPeriodEditorModifier: ViewModifier {
+    let settings: AppSettings
     let entries: [PeriodEntry]
     let ovulationEntries: [OvulationEntry]
     @State private var editingPeriod: PeriodEntry?
@@ -1920,7 +1885,7 @@ private struct OngoingPeriodEditorModifier: ViewModifier {
         }
         .navigationDestination(isPresented: isEditing) {
             if let editingPeriod {
-                EntryDetailView(entry: editingPeriod, entries: entries, ovulationEntries: ovulationEntries)
+                EntryDetailView(settings: settings, entry: editingPeriod, entries: entries, ovulationEntries: ovulationEntries)
             }
         }
     }
@@ -1938,6 +1903,16 @@ private struct OngoingPeriodEditorModifier: ViewModifier {
 }
 
 #Preview {
-    ContentView()
-        .modelContainer(for: [PeriodEntry.self, OvulationEntry.self, IntimacyEntry.self], inMemory: true)
+    let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(
+        for: AppSettings.self,
+        PeriodEntry.self,
+        OvulationEntry.self,
+        IntimacyEntry.self,
+        configurations: configuration
+    )
+    container.mainContext.insert(AppSettings())
+
+    return ContentView()
+        .modelContainer(container)
 }

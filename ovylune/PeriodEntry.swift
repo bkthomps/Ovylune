@@ -9,6 +9,46 @@ import Foundation
 import SwiftData
 
 @Model
+final class AppSettings {
+    static let defaultSymptoms = [
+        "Cramps", "Headache", "Fatigue", "Bloating", "Tenderness", "Mood shifts"
+    ]
+
+    var isOvulationTrackingEnabled: Bool
+    var isIntimacyTrackingEnabled: Bool
+    var firstWeekday: Int
+    private var symptomsData: Data
+
+    init(
+        isOvulationTrackingEnabled: Bool = true,
+        isIntimacyTrackingEnabled: Bool = true,
+        firstWeekday: Int = 1,
+        symptoms: [String] = AppSettings.defaultSymptoms
+    ) {
+        self.isOvulationTrackingEnabled = isOvulationTrackingEnabled
+        self.isIntimacyTrackingEnabled = isIntimacyTrackingEnabled
+        self.firstWeekday = firstWeekday
+        self.symptomsData = (try? JSONEncoder().encode(symptoms)) ?? Data()
+    }
+
+    var symptoms: [String] {
+        get {
+            (try? JSONDecoder().decode([String].self, from: symptomsData)) ?? Self.defaultSymptoms
+        }
+        set {
+            symptomsData = (try? JSONEncoder().encode(newValue)) ?? Data()
+        }
+    }
+
+    func reset() {
+        isOvulationTrackingEnabled = true
+        isIntimacyTrackingEnabled = true
+        firstWeekday = 1
+        symptoms = Self.defaultSymptoms
+    }
+}
+
+@Model
 final class PeriodEntry {
     var startDate: Date
     var endDate: Date?
