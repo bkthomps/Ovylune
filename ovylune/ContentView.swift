@@ -907,7 +907,7 @@ private struct MonthCalendar: View {
                     legendItem(color: .purple, label: "Ovulation logged")
                 }
                 if isIntimacyTrackingEnabled {
-                    legendItem(color: .gray, label: "Pregnancy risk")
+                    legendItem(color: .gray, label: "Intimacy logged")
                 }
             }
             .padding(.leading, 8)
@@ -1085,7 +1085,7 @@ private struct DayCell: View {
         }
 
         if hasIntimacy {
-            labels.append("Pregnancy Risk")
+            labels.append("Intimacy")
         }
 
         if isPredictedFertile {
@@ -1106,7 +1106,7 @@ private struct DayCell: View {
         let logged = [
             hasPeriod ? "period" : nil,
             hasOvulation ? "ovulation" : nil,
-            hasIntimacy ? "pregnancy risk" : nil
+            hasIntimacy ? "intimacy" : nil
         ].compactMap { $0 }
         if !logged.isEmpty { return "\(formatted), \(logged.joined(separator: ", ")) logged" }
         if isPredictedPeriod { return "\(formatted), period predicted" }
