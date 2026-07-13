@@ -283,9 +283,9 @@ enum CycleInsights {
         )
     }
 
-    /// Days from a period start to the detected ovulation event. This is the
-    /// secondary calendar signal when no reliable luteal-phase observation is
-    /// available.
+    /// Days from a period start to the detected ovulation event. This remains a
+    /// useful historical metric, but it does not drive calendar estimates because
+    /// the pre-ovulation portion of a cycle is generally the more variable phase.
     static func preciseAverageOvulationInterval(
         periodEntries: [PeriodEntry],
         ovulationEntries: [OvulationEntry],
@@ -325,6 +325,30 @@ enum CycleInsights {
             byAdding: .day,
             value: -fallbackLutealPhaseLength,
             to: calendar.startOfDay(for: nextPeriodStart)
+        )
+    }
+
+    /// Estimates ovulation backward from the following period. Only completed
+    /// cycles before `cycleStart` may personalize the luteal phase; otherwise
+    /// the general 14-day luteal-phase estimate is used.
+    static func estimatedOvulationDate(
+        cycleStart: Date,
+        nextPeriodStart: Date,
+        periodEntries: [PeriodEntry],
+        ovulationEntries: [OvulationEntry],
+        calendar: Calendar = .current
+    ) -> Date? {
+        let lutealPhaseLength = preciseAverageLutealPhaseLength(
+            periodEntries: periodEntries,
+            ovulationEntries: ovulationEntries,
+            before: cycleStart,
+            calendar: calendar
+        ) ?? Double(fallbackLutealPhaseLength)
+
+        return addingRoundedDays(
+            -lutealPhaseLength,
+            to: calendar.startOfDay(for: nextPeriodStart),
+            calendar: calendar
         )
     }
 

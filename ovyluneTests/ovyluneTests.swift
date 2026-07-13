@@ -438,6 +438,62 @@ struct ovyluneTests {
         )
     }
 
+    @Test func estimatedOvulationUsesFourteenDayLutealFallbackInsteadOfIncompleteInterval() {
+        let periods = [PeriodEntry(startDate: date(2026, 1, 1))]
+        let ovulations = [OvulationEntry(startDate: date(2026, 1, 22))]
+
+        // The logged ovulation makes a period-to-ovulation interval available,
+        // but without a following logged period it is not a completed luteal
+        // observation and must not override the 14-day fallback.
+        #expect(
+            CycleInsights.preciseAverageOvulationInterval(
+                periodEntries: periods,
+                ovulationEntries: ovulations,
+                before: date(2026, 2, 5),
+                calendar: calendar
+            ) != nil
+        )
+        #expect(
+            CycleInsights.estimatedOvulationDate(
+                cycleStart: date(2026, 2, 5),
+                nextPeriodStart: date(2026, 3, 12),
+                periodEntries: periods,
+                ovulationEntries: ovulations,
+                calendar: calendar
+            ) == date(2026, 2, 26)
+        )
+    }
+
+    @Test func estimatedOvulationUsesLutealLengthLearnedFromCompletedCycles() {
+        let periods = [
+            PeriodEntry(startDate: date(2026, 1, 1)),
+            PeriodEntry(startDate: date(2026, 1, 31)),
+            PeriodEntry(startDate: date(2026, 3, 2)),
+            PeriodEntry(startDate: date(2026, 4, 1)),
+            PeriodEntry(startDate: date(2026, 5, 1)),
+            PeriodEntry(startDate: date(2026, 5, 31)),
+            PeriodEntry(startDate: date(2026, 6, 30))
+        ]
+        let ovulations = [
+            OvulationEntry(startDate: date(2026, 1, 19)),
+            OvulationEntry(startDate: date(2026, 2, 18)),
+            OvulationEntry(startDate: date(2026, 3, 20)),
+            OvulationEntry(startDate: date(2026, 4, 19)),
+            OvulationEntry(startDate: date(2026, 5, 19)),
+            OvulationEntry(startDate: date(2026, 6, 18))
+        ]
+
+        #expect(
+            CycleInsights.estimatedOvulationDate(
+                cycleStart: date(2026, 7, 30),
+                nextPeriodStart: date(2026, 8, 29),
+                periodEntries: periods,
+                ovulationEntries: ovulations,
+                calendar: calendar
+            ) == date(2026, 8, 17)
+        )
+    }
+
     @Test func learnsInclusiveOvulationLengthFromPastRanges() {
         let entries = [
             OvulationEntry(startDate: date(2026, 1, 10), endDate: date(2026, 1, 12)),

@@ -785,32 +785,18 @@ private struct MonthPager: View {
         }
 
         for (cycleStart, cycleEnd) in zip(cycleStarts, cycleStarts.dropFirst()) {
-            let learnedLutealLength = CycleInsights.preciseAverageLutealPhaseLength(
-                periodEntries: entries,
-                ovulationEntries: ovulationEntries,
-                before: cycleStart,
-                calendar: calendar
-            )
-            let learnedOvulationInterval = CycleInsights.preciseAverageOvulationInterval(
-                periodEntries: entries,
-                ovulationEntries: ovulationEntries,
-                before: cycleStart,
-                calendar: calendar
-            )
             let logged = preferredOvulations
                 .filter {
                     let date = calendar.startOfDay(for: $0.startDate)
                     return date >= cycleStart && date < cycleEnd
                 }
                 .max { $0.startDate < $1.startDate }
-            let estimatedEvent = learnedLutealLength.flatMap {
-                calendar.date(byAdding: .day, value: Int((-$0).rounded()), to: cycleEnd)
-            } ?? learnedOvulationInterval.flatMap {
-                calendar.date(byAdding: .day, value: Int($0.rounded()), to: cycleStart)
-            } ?? calendar.date(
-                byAdding: .day,
-                value: -CycleInsights.fallbackLutealPhaseLength,
-                to: cycleEnd
+            let estimatedEvent = CycleInsights.estimatedOvulationDate(
+                cycleStart: cycleStart,
+                nextPeriodStart: cycleEnd,
+                periodEntries: entries,
+                ovulationEntries: ovulationEntries,
+                calendar: calendar
             )
             guard let ovulationEnd = logged.map({ calendar.startOfDay(for: $0.endDate ?? $0.startDate) })
                     ?? estimatedEvent else { continue }
