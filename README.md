@@ -2,10 +2,9 @@
 
 Ovylune is a private, local-first period and cycle tracker for iPhone and iPad. It requires no account and keeps personal health data on the device—without cloud storage, analytics, ads, or tracking.
 
-<video controls playsinline width="100%" title="Ovylune app demo">
-  <source src="demo/demo.MP4" type="video/mp4">
-  Your browser does not support embedded video. <a href="demo/demo.MP4">Watch the Ovylune demo</a>.
-</video>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bkthomps/Ovylune/demo/demo_video.MP4" title="DemoVideo" alt="Demo video showing app functionality">
+</p>
 
 ## Features
 
